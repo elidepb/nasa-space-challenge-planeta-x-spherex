@@ -1,4 +1,4 @@
-# PROGRAMADOR 2 — Scientific / Motion Engine
+# Etner — Scientific / Motion Engine
 
 **Programador:** Etner
 

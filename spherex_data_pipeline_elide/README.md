@@ -1,4 +1,4 @@
-# PROGRAMADOR 1 — SPHEREx Data Pipeline
+# Elide — SPHEREx Data Pipeline
 
 **Programador:** Elide
 

@@ -55,7 +55,7 @@ Aplicación funcional donde el usuario pueda:
 
 ---
 
-# PROGRAMADOR 1 — SPHEREx Data Pipeline
+# Elide — SPHEREx Data Pipeline
 
 **Programador:** Elide
 
@@ -107,7 +107,7 @@ get_observations(
 
 ---
 
-# PROGRAMADOR 2 — Scientific / Motion Engine
+# Etner — Scientific / Motion Engine
 
 **Programador:** Etner
 
@@ -183,7 +183,7 @@ analyze_observations(
 
 ---
 
-# PROGRAMADOR 3 — Backend / API / Integration
+# Anghelo — Backend / API / Integration
 
 **Programador:** Anghelo
 
@@ -245,7 +245,7 @@ GET /analysis/{id}/images
 
 ---
 
-# PROGRAMADOR 4 — Frontend / Visualization
+# Andy — Frontend / Visualization
 
 **Programador:** Andy
 
