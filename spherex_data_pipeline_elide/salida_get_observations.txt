@@ -1,0 +1,106 @@
+SPHEREx Data Pipeline — salida de ejecución
+Fecha: 2026-09-28T16:32:14
+
+============================================================
+1) Dataset demo  source=demo  qr=qr2  bandpass=SPHEREx-D2
+============================================================
+python -m spherex_pipeline --source demo --qr qr2 --bandpass SPHEREx-D2
+
+5 observaciones (orden cronológico)
+  DEMO-001      2025-06-01T00:00:00.000   det=2  λ=1.35 μm  shape=[30, 30]  invalid=2
+  DEMO-002      2025-07-16T00:00:00.000   det=2  λ=1.35 μm  shape=[30, 30]  invalid=2
+  DEMO-003      2025-08-30T00:00:00.000   det=2  λ=1.35 μm  shape=[30, 30]  invalid=2
+  DEMO-004      2025-10-14T00:00:00.000   det=2  λ=1.35 μm  shape=[30, 30]  invalid=2
+  DEMO-005      2025-11-28T00:00:00.000   det=2  λ=1.35 μm  shape=[30, 30]  invalid=2
+
+============================================================
+2) IRSA real  source=irsa  qr=qr2  bandpass=SPHEREx-D2
+   RA=210.80227  Dec=54.34895  size=0.02
+============================================================
+python -m spherex_pipeline --ra 210.80227 --dec 54.34895 --size 0.02 --qr qr2 --bandpass SPHEREx-D2 --source irsa
+
+84 observaciones (orden cronológico)
+  cutout_f61f49f0ef583a08  2025-05-10T17:04:37.741   det=2  λ=1.50641 μm  shape=[12, 12]  invalid=2
+  cutout_49db0d752bfb17ad  2025-05-10T17:06:46.672   det=2  λ=1.54301 μm  shape=[12, 12]  invalid=1
+  cutout_cb3614d5b41a8804  2025-05-10T17:08:55.602   det=2  λ=1.580149 μm  shape=[12, 12]  invalid=0
+  cutout_cd1e8ac6ed78be84  2025-05-10T17:11:04.533   det=2  λ=1.618182 μm  shape=[12, 12]  invalid=0
+  cutout_478857036a63d065  2025-05-10T21:58:09.061   det=2  λ=1.656058 μm  shape=[12, 12]  invalid=0
+  cutout_f60c2dd90f42b47b  2025-05-14T09:07:24.651   det=2  λ=1.087144 μm  shape=[12, 12]  invalid=24
+  cutout_df5a4e8ed2e94aa9  2025-05-14T09:09:33.581   det=2  λ=1.1126 μm  shape=[12, 12]  invalid=3
+  cutout_c5769ea557c5b0ce  2025-05-14T09:11:42.513   det=2  λ=1.138729 μm  shape=[12, 12]  invalid=1
+  cutout_57c69bf1c58df16a  2025-05-14T09:13:51.443   det=2  λ=1.166172 μm  shape=[12, 12]  invalid=0
+  cutout_1e02214ec7233015  2025-05-15T20:59:51.768   det=2  λ=1.193862 μm  shape=[12, 12]  invalid=0
+  cutout_7d7d98b57b054a62  2025-05-15T21:02:00.700   det=2  λ=1.22235 μm  shape=[12, 12]  invalid=4
+  cutout_3d68791000584c92  2025-05-15T21:04:09.630   det=2  λ=1.25165 μm  shape=[12, 12]  invalid=0
+  cutout_2f90dbd9e8cd21df  2025-05-15T21:06:18.560   det=2  λ=1.281299 μm  shape=[12, 12]  invalid=1
+  cutout_78b61d3d35a9d6d8  2025-05-16T05:09:09.595   det=2  λ=1.652872 μm  shape=[12, 12]  invalid=0
+  cutout_799a711310668da5  2025-05-16T13:17:36.768   det=2  λ=1.432995 μm  shape=[12, 12]  invalid=1
+  cutout_1fd05bda0d2c3707  2025-05-16T13:19:45.699   det=2  λ=1.467269 μm  shape=[12, 12]  invalid=0
+  cutout_08e66bce19aa8ec5  2025-05-16T13:21:54.629   det=2  λ=1.503071 μm  shape=[12, 12]  invalid=6
+  cutout_7ffa3f1f3011a0e1  2025-05-16T13:24:03.560   det=2  λ=1.539537 μm  shape=[12, 12]  invalid=0
+  cutout_2c9f8fd553477afd  2025-05-24T21:52:33.088   det=2  λ=1.312172 μm  shape=[12, 12]  invalid=0
+  cutout_fc8052b819a18a62  2025-05-24T21:54:42.018   det=2  λ=1.343093 μm  shape=[12, 12]  invalid=1
+  cutout_baeaf57e3342460e  2025-05-24T21:56:50.949   det=2  λ=1.375106 μm  shape=[12, 12]  invalid=0
+  cutout_7ec3ac745d13943f  2025-05-24T21:58:59.879   det=2  λ=1.408084 μm  shape=[12, 12]  invalid=1
+  cutout_36d58820a68607a9  2025-05-26T17:55:17.892   det=2  λ=1.436557 μm  shape=[12, 12]  invalid=0
+  cutout_f636a3d7407a8dfd  2025-05-26T17:57:26.823   det=2  λ=1.470812 μm  shape=[12, 12]  invalid=0
+  cutout_c584280589438099  2025-05-29T09:30:46.625   det=2  λ=1.576816 μm  shape=[12, 12]  invalid=7
+  cutout_ac82dcf3c790730c  2025-05-29T09:32:55.556   det=2  λ=1.614716 μm  shape=[12, 12]  invalid=0
+  cutout_fa38780770f5ffa7  2025-12-06T12:32:03.461   det=2  λ=1.180761 μm  shape=[12, 12]  invalid=9
+  cutout_608048bf685e0a65  2025-12-06T12:34:12.393   det=2  λ=1.209047 μm  shape=[12, 12]  invalid=2
+  cutout_b6ca590d3205a8a9  2025-12-06T12:36:21.323   det=2  λ=1.23766 μm  shape=[12, 12]  invalid=1
+  cutout_5f25737d45501cfe  2025-12-06T12:38:30.255   det=2  λ=1.26761 μm  shape=[12, 12]  invalid=0
+  cutout_4ec2e7326778da29  2025-12-07T11:21:33.829   det=2  λ=1.466086 μm  shape=[12, 12]  invalid=1
+  cutout_4e1d6aaed958825f  2025-12-07T11:23:42.760   det=2  λ=1.501903 μm  shape=[12, 12]  invalid=0
+  cutout_f9da7948c94af5f1  2025-12-07T11:25:51.691   det=2  λ=1.538354 μm  shape=[12, 12]  invalid=0
+  cutout_7a34dab3bdd14555  2025-12-07T11:28:00.621   det=2  λ=1.575837 μm  shape=[12, 12]  invalid=0
+  cutout_79093db2e880ce8f  2025-12-07T17:49:36.582   det=2  λ=1.613669 μm  shape=[12, 12]  invalid=2
+  cutout_55af916a37a5605e  2025-12-07T22:47:38.056   det=2  λ=1.100718 μm  shape=[12, 12]  invalid=0
+  cutout_9baa77ea29356a6e  2025-12-07T22:49:46.987   det=2  λ=1.126698 μm  shape=[12, 12]  invalid=0
+  cutout_192c250063b92dfa  2025-12-08T00:22:11.012   det=2  λ=1.272794 μm  shape=[12, 12]  invalid=1
+  cutout_2bb137d00cebfbb3  2025-12-08T00:24:19.942   det=2  λ=1.303128 μm  shape=[12, 12]  invalid=0
+  cutout_4575d9dffdd39977  2025-12-08T00:26:28.874   det=2  λ=1.333877 μm  shape=[12, 12]  invalid=0
+  cutout_8e61f8f511c3469a  2025-12-08T00:28:37.804   det=2  λ=1.365986 μm  shape=[12, 12]  invalid=0
+  cutout_b24273e45c37dc18  2025-12-08T23:12:10.540   det=2  λ=1.153422 μm  shape=[12, 12]  invalid=0
+  cutout_e9f7d8ec74a0bfd1  2025-12-09T07:20:11.647   det=2  λ=1.153182 μm  shape=[12, 12]  invalid=1
+  cutout_301ec05f93cd4c40  2025-12-10T06:10:03.494   det=2  λ=1.397861 μm  shape=[12, 12]  invalid=0
+  cutout_da65a77696a57983  2025-12-10T06:12:12.425   det=2  λ=1.431809 μm  shape=[12, 12]  invalid=0
+  cutout_cdd47195e9dd4ad1  2025-12-11T05:01:27.448   det=2  λ=1.106715 μm  shape=[12, 12]  invalid=0
+  cutout_a94fc5b93c77c57e  2025-12-11T05:03:36.379   det=2  λ=1.132294 μm  shape=[12, 12]  invalid=0
+  cutout_3fc5b47e2a2c6f2c  2025-12-11T17:55:08.684   det=2  λ=1.15896 μm  shape=[12, 12]  invalid=1
+  cutout_1ae546931431b63d  2025-12-11T17:57:17.616   det=2  λ=1.186487 μm  shape=[12, 12]  invalid=2
+  cutout_9fc01d82c1d64adf  2025-12-11T17:59:26.546   det=2  λ=1.214945 μm  shape=[12, 12]  invalid=3
+  cutout_8c3d7bcf8c4c72fe  2025-12-11T18:01:35.476   det=2  λ=1.243911 μm  shape=[12, 12]  invalid=0
+  cutout_304f29f5d334bd86  2025-12-11T22:49:53.696   det=2  λ=1.273354 μm  shape=[12, 12]  invalid=1
+  cutout_91b406bd6be22922  2026-05-17T10:53:45.256   det=2  λ=1.420333 μm  shape=[12, 12]  invalid=0
+  cutout_563ba157e576324e  2026-05-17T10:55:54.187   det=2  λ=1.454385 μm  shape=[12, 12]  invalid=2
+  cutout_036d60556c9c7b9d  2026-05-17T10:58:03.117   det=2  λ=1.489469 μm  shape=[12, 12]  invalid=5
+  cutout_e207c4b966dc687b  2026-05-17T11:00:12.049   det=2  λ=1.525696 μm  shape=[12, 12]  invalid=0
+  cutout_aa5db02d16ed6443  2026-05-22T00:05:16.945   det=2  λ=1.414998 μm  shape=[12, 12]  invalid=1
+  cutout_7283b54ebfbc4992  2026-05-22T00:07:25.877   det=2  λ=1.449067 μm  shape=[12, 12]  invalid=0
+  cutout_6fe0a72c4a342aae  2026-05-22T00:09:34.807   det=2  λ=1.484016 μm  shape=[12, 12]  invalid=1
+  cutout_5e238d913cccf82e  2026-05-22T00:11:43.738   det=2  λ=1.519591 μm  shape=[12, 12]  invalid=0
+  cutout_1aca2a7b9cfe14c9  2026-05-22T19:38:10.159   det=2  λ=1.556832 μm  shape=[12, 12]  invalid=2
+  cutout_f0f74169257be6f4  2026-05-22T19:40:19.088   det=2  λ=1.594041 μm  shape=[12, 12]  invalid=0
+  cutout_f9d0d0270160f29b  2026-05-22T19:42:28.021   det=2  λ=1.632362 μm  shape=[12, 12]  invalid=1
+  cutout_623f13f4d89d2cb0  2026-05-23T03:45:52.854   det=2  λ=1.562574 μm  shape=[12, 12]  invalid=0
+  cutout_4cac1b74f4d111ca  2026-05-23T03:48:01.784   det=2  λ=1.600054 μm  shape=[12, 12]  invalid=1
+  cutout_ef5a41a72b154d72  2026-05-23T03:50:10.715   det=2  λ=1.638277 μm  shape=[12, 12]  invalid=6
+  cutout_e75b69424cf55cc6  2026-05-23T16:52:04.655   det=2  λ=1.098955 μm  shape=[12, 12]  invalid=2
+  cutout_fca15fdd6cf052d3  2026-05-23T16:54:13.586   det=2  λ=1.124567 μm  shape=[12, 12]  invalid=1
+  cutout_65dace62b4d319bc  2026-05-31T08:55:24.720   det=2  λ=1.151573 μm  shape=[12, 12]  invalid=0
+  cutout_9b2d26de20d20f0e  2026-05-31T08:57:35.186   det=2  λ=1.179076 μm  shape=[12, 12]  invalid=0
+  cutout_b7183cc2e98419f2  2026-05-31T08:59:44.117   det=2  λ=1.207563 μm  shape=[12, 12]  invalid=0
+  cutout_320a34da26e20525  2026-05-31T09:01:53.047   det=2  λ=1.23629 μm  shape=[12, 12]  invalid=0
+  cutout_3351a3caf3289816  2026-06-06T08:19:42.195   det=2  λ=1.265898 μm  shape=[12, 12]  invalid=0
+  cutout_8b1248fd704a9998  2026-06-06T08:21:51.125   det=2  λ=1.295959 μm  shape=[12, 12]  invalid=1
+  cutout_03d6439ddf275ede  2026-06-06T08:24:00.056   det=2  λ=1.326662 μm  shape=[12, 12]  invalid=0
+  cutout_9bf57e1fd00a1bac  2026-06-06T08:26:08.987   det=2  λ=1.3582 μm  shape=[12, 12]  invalid=1
+  cutout_ecb817ac408de926  2026-06-13T14:39:54.464   det=2  λ=1.390467 μm  shape=[12, 12]  invalid=5
+  cutout_60f806001cc198eb  2026-06-19T07:38:39.591   det=2  λ=1.415223 μm  shape=[12, 12]  invalid=1
+  cutout_d6d666ab64e3c17a  2026-06-19T12:31:18.740   det=2  λ=1.448995 μm  shape=[12, 12]  invalid=0
+  cutout_93facbff1a9114ea  2026-06-19T19:01:07.407   det=2  λ=1.484252 μm  shape=[12, 12]  invalid=1
+  cutout_ae70e10be8aa5929  2026-06-19T22:16:50.856   det=2  λ=1.519852 μm  shape=[12, 12]  invalid=0
+  cutout_772c27f266dfa933  2026-06-22T20:21:33.190   det=2  λ=1.420743 μm  shape=[12, 12]  invalid=1
+  cutout_8f5f9ad6fd25817e  2026-06-23T14:16:33.899   det=2  λ=1.454769 μm  shape=[12, 12]  invalid=0
+  cutout_dbd11e6c5cb4792a  2026-06-24T03:19:00.063   det=2  λ=1.489871 μm  shape=[12, 12]  invalid=0

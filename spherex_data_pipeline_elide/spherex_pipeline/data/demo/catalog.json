@@ -1,0 +1,63 @@
+{
+  "region": {
+    "ra": 210.80227,
+    "dec": 54.34895,
+    "size": 0.05
+  },
+  "bandpass": "SPHEREx-D2",
+  "pixel_scale_arcsec": 6.2,
+  "npix": 64,
+  "notes": "Dataset sint\u00e9tico con estructura MEF SPHEREx (IMAGE, FLAGS, VARIANCE, ZODI, PSF, WCS-WAVE). Incluye fuentes fijas y un objeto en movimiento para pruebas del motor cient\u00edfico.",
+  "observations": [
+    {
+      "id": "DEMO-001",
+      "file": "epoch_001.fits",
+      "timestamp": "2025-06-01T00:00:00.000",
+      "ra": 210.80227,
+      "dec": 54.34895,
+      "detector": 2,
+      "wavelength": 1.35,
+      "bandpass": "SPHEREx-D2"
+    },
+    {
+      "id": "DEMO-002",
+      "file": "epoch_002.fits",
+      "timestamp": "2025-07-16T00:00:00.000",
+      "ra": 210.80227,
+      "dec": 54.34895,
+      "detector": 2,
+      "wavelength": 1.35,
+      "bandpass": "SPHEREx-D2"
+    },
+    {
+      "id": "DEMO-003",
+      "file": "epoch_003.fits",
+      "timestamp": "2025-08-30T00:00:00.000",
+      "ra": 210.80227,
+      "dec": 54.34895,
+      "detector": 2,
+      "wavelength": 1.35,
+      "bandpass": "SPHEREx-D2"
+    },
+    {
+      "id": "DEMO-004",
+      "file": "epoch_004.fits",
+      "timestamp": "2025-10-14T00:00:00.000",
+      "ra": 210.80227,
+      "dec": 54.34895,
+      "detector": 2,
+      "wavelength": 1.35,
+      "bandpass": "SPHEREx-D2"
+    },
+    {
+      "id": "DEMO-005",
+      "file": "epoch_005.fits",
+      "timestamp": "2025-11-28T00:00:00.000",
+      "ra": 210.80227,
+      "dec": 54.34895,
+      "detector": 2,
+      "wavelength": 1.35,
+      "bandpass": "SPHEREx-D2"
+    }
+  ]
+}

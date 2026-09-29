@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spherex-pipeline"
+version = "0.1.0"
+description = "SPHEREx data pipeline: query IRSA, download FITS cutouts and deliver Observation objects."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "astropy>=6.0",
+    "pyvo>=1.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+sia = ["astroquery>=0.4.7"]
+
+[project.scripts]
+spherex-pipeline = "spherex_pipeline.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["spherex_pipeline*"]
+
+[tool.setuptools.package-data]
+spherex_pipeline = ["data/demo/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: pruebas reales contra NASA/IPAC IRSA (SPHEREX_IRSA=1)",
+]
