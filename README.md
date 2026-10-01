@@ -1,5 +1,15 @@
 # NASA SPACE CHALLENGE — Planeta X y SPHEREx
 
+## Equipo
+
+| Integrante | Rol |
+| --- | --- |
+| Elide | SPHEREx Data Pipeline (IRSA, FITS) |
+| Etner | Scientific / Motion Engine |
+| Anghelo | Backend / API / Integration |
+| Andy | Frontend / Visualization |
+| Andre | Video y presentación del proyecto |
+
 ## TARJETA GENERAL — PROYECTO SPHEREx
 
 **Objetivo**
@@ -322,3 +332,27 @@ SNR
 - difference mode;
 - overlays de candidatos;
 - integración final con API.
+
+---
+
+# Andre — Video / Presentación
+
+**Integrante:** Andre (no programa)
+
+**Responsabilidad**
+
+Contar el proyecto en video para la entrega del NASA Space Apps Challenge.
+
+**Tareas**
+
+1. Preparar el guion: el reto Planeta X y SPHEREx, el problema y nuestra solución.
+2. Grabar la demo de la aplicación (búsqueda de región, blink, diferencias,
+   candidatos y modo cazador).
+3. Editar el video y añadir subtítulos.
+4. Incluir los créditos del equipo y el agradecimiento a NASA/IPAC IRSA por los datos SPHEREx.
+
+**Entregables**
+
+- guion;
+- video final del proyecto;
+- material de presentación para la entrega.
