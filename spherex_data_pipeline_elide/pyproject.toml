@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spherex-pipeline"
 version = "0.1.0"
-description = "SPHEREx data pipeline: query IRSA, download FITS cutouts and deliver Observation objects."
+description = "SPHEREx data pipeline: spectral-group IRSA cutouts and Observation objects."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 sia = ["astroquery>=0.4.7"]
+select = ["matplotlib>=3.8", "pillow>=10.0"]
 
 [project.scripts]
 spherex-pipeline = "spherex_pipeline.__main__:main"

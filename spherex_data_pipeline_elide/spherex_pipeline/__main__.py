@@ -12,6 +12,7 @@ import warnings
 
 from spherex_pipeline.constants import (
     DEFAULT_BANDPASS,
+    DEFAULT_PIPELINE_METHOD,
     DEFAULT_QR,
     DEFAULT_SOURCE,
     DEMO_DEC,
@@ -21,7 +22,9 @@ from spherex_pipeline.constants import (
     SPECTRAL_UNIT,
 )
 from spherex_pipeline.demo import build_demo_dataset
+from spherex_pipeline import pipeline as pipeline_mod
 from spherex_pipeline.pipeline import get_observations
+from spherex_pipeline.spectral_select import main as spectral_main
 
 NOISY_LOGGERS = ("astropy", "astropy.wcs", "astropy.wcs.wcs", "astropy.io.fits")
 
@@ -43,7 +46,7 @@ def silence_astropy() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Consulta todas las épocas SPHEREx de un QR y una banda para una región.",
+        description="Extractor original: todas las épocas SPHEREx de un QR y una banda.",
     )
     parser.add_argument("--ra", type=float, default=DEMO_RA, help="Ascensión recta en grados.")
     parser.add_argument("--dec", type=float, default=DEMO_DEC, help="Declinación en grados.")
@@ -75,6 +78,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Tope opcional. Por defecto se descargan todas las épocas TAP.",
+    )
+    parser.add_argument(
+        "--time-start",
+        default=None,
+        help="Inicio del intervalo (ISO 2025-05-01 o 2025-05-01T12:00:00, o MJD). Inclusive.",
+    )
+    parser.add_argument(
+        "--time-end",
+        default=None,
+        help="Fin del intervalo (ISO o MJD). Inclusive; una fecha sin hora cubre todo ese día.",
     )
     parser.add_argument("--build-demo", action="store_true", help="Regenera el dataset demo local.")
     parser.add_argument(
@@ -177,12 +190,15 @@ def assign_bin(wavelength: float, edges: list[float], n_bins: int) -> int:
     if not edges or len(edges) < 2:
         return 0
     w_min, w_max = edges[0], edges[-1]
+    usable = min(n_bins, len(edges) - 1)
+    if usable <= 1 or w_min == w_max:
+        return 0
     if wavelength >= w_max:
-        return n_bins - 1
+        return usable - 1
     if wavelength <= w_min:
         return 0
-    bin_idx = int((wavelength - w_min) / (w_max - w_min) * n_bins)
-    return max(0, min(n_bins - 1, bin_idx))
+    bin_idx = int((wavelength - w_min) / (w_max - w_min) * usable)
+    return max(0, min(usable - 1, bin_idx))
 
 
 def print_survey_bins_report(
@@ -240,7 +256,27 @@ def print_survey_bins_report(
     print("=" * sep_length)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _split_method(argv: list[str]) -> tuple[str, list[str]]:
+    """Separa ``--method`` del resto de flags."""
+    method = DEFAULT_PIPELINE_METHOD
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--method" and i + 1 < len(argv):
+            method = argv[i + 1]
+            i += 2
+            continue
+        if token.startswith("--method="):
+            method = token.split("=", 1)[1]
+            i += 1
+            continue
+        rest.append(token)
+        i += 1
+    return method.lower().strip(), rest
+
+
+def legacy_main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -262,7 +298,18 @@ def main(argv: list[str] | None = None) -> int:
         detector=args.detector,
         source=args.source,
         max_observations=args.max_observations,
+        time_start=args.time_start,
+        time_end=args.time_end,
+        method="original",
     )
+
+    last = pipeline_mod.LAST_RESULT
+    report = last.report if last is not None else None
+    if report is not None and (report.cutout_downloads or report.mef_fallbacks):
+        print(
+            f"Descargas: cutout IBE={report.cutout_downloads}, "
+            f"MEF fallback={report.mef_fallbacks}"
+        )
 
     summaries = [obs.to_summary() for obs in observations]
     if not summaries:
@@ -274,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 2. Calcular los N bins globales de longitud de onda
     bin_edges, bin_centers = compute_spectral_bins(summaries, n_bins=args.bins)
+    n_bins = max(1, len(bin_centers)) if bin_centers else args.bins
 
     # 3. Anotar cada observación con su Survey y Bin
     for s_idx, survey in enumerate(surveys, start=1):
@@ -282,11 +330,11 @@ def main(argv: list[str] | None = None) -> int:
             item["survey_name"] = f"Survey {s_idx}"
             if item.get("wavelength") is not None:
                 wl = float(item["wavelength"])
-                b_idx = assign_bin(wl, bin_edges, args.bins)
+                b_idx = assign_bin(wl, bin_edges, n_bins)
                 item["bin_index"] = b_idx + 1
                 item["bin_wl_min"] = round(bin_edges[b_idx], 6)
-                item["bin_wl_max"] = round(bin_edges[b_idx + 1], 6)
-                item["bin_wl_center"] = round(bin_centers[b_idx], 6)
+                item["bin_wl_max"] = round(bin_edges[min(b_idx + 1, len(bin_edges) - 1)], 6)
+                item["bin_wl_center"] = round(bin_centers[min(b_idx, len(bin_centers) - 1)], 6)
 
     # Si se pide JSON, emitir todos los registros enriquecidos
     if args.json:
@@ -295,9 +343,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # 4. Listado cronológico agrupado visualmente por Survey
+    window = ""
+    if args.time_start or args.time_end:
+        window = f" | intervalo: {args.time_start or '…'} → {args.time_end or '…'}"
     print(
         f"\n{len(summaries)} observaciones recuperadas "
-        f"({len(surveys)} Surveys detectados)\n"
+        f"({len(surveys)} Surveys detectados){window}\n"
     )
     for s_idx, survey in enumerate(surveys, start=1):
         t_start = parse_timestamp(survey[0]["timestamp"]).strftime("%Y-%m-%d")
@@ -331,10 +382,29 @@ def main(argv: list[str] | None = None) -> int:
         surveys,
         bin_edges,
         bin_centers,
-        n_bins=args.bins,
+        n_bins=n_bins,
         bandpass=args.bandpass,
     )
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI principal: método spectral por defecto; original con ``--method original``."""
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--build-demo" in argv:
+        silence_astropy()
+        path = build_demo_dataset()
+        print(f"Dataset demo escrito en {path}")
+        return 0
+
+    method, rest = _split_method(argv)
+    if method == "original":
+        return legacy_main(rest)
+    if method != "spectral":
+        print("method debe ser 'spectral' o 'original'.")
+        return 2
+    silence_astropy()
+    return spectral_main(rest)
 
 
 if __name__ == "__main__":

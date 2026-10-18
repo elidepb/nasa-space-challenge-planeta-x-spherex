@@ -5,20 +5,25 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from astropy.table import Table
+from astropy.time import Time
 
 from spherex_pipeline.constants import (
     CACHE_DIR,
     DEFAULT_BANDPASS,
     DEFAULT_QR,
     DOWNLOAD_RETRIES,
+    IBE_SPHEREX_DATA_MARKER,
     IRSA_BASE_URL,
     IRSA_SIA_URL,
     IRSA_TAP_SYNC_URL,
@@ -26,9 +31,13 @@ from spherex_pipeline.constants import (
     KNOWN_BANDPASSES,
     KNOWN_RELEASES,
     REMOTE_TIMEOUT_S,
+    SPHEREX_S3_HTTPS_BASE,
 )
 
 LOGGER = logging.getLogger(__name__)
+
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_NUMERIC = re.compile(r"^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$")
 
 _QR_ALIASES = {
     "2": "qr2",
@@ -65,6 +74,13 @@ class IrsaRecord:
     time_mjd: float | None
     bandpass: str | None
     obs_id: str | None = None
+
+
+@dataclass
+class DownloadResult:
+    path: Path
+    url: str
+    kind: str  # "cutout" | "mef"
 
 
 def resolve_bandpass(bandpass: str | None = None, detector: int | str | None = None) -> str:
@@ -125,8 +141,97 @@ def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
     return f"{base}?center={ra},{dec}&size={size_deg}"
 
 
-def _tap_adql(ra: float, dec: float, bandpass: str, qr: str) -> str:
+def full_mef_url(access_url: str) -> str:
+    """Quita el query string del access URL: el MEF completo, no el recorte."""
+    return access_url.split("?")[0]
+
+
+def s3_mef_url(access_url: str) -> str | None:
+    """Mirror público AWS del mismo MEF on-prem. None si la URI no es IBE SPHEREx."""
+    base = full_mef_url(access_url)
+    marker = IBE_SPHEREX_DATA_MARKER
+    index = base.find(marker)
+    if index < 0:
+        return None
+    key = base[index + len(marker) :].lstrip("/")
+    if not key:
+        return None
+    return f"{SPHEREX_S3_HTTPS_BASE}/{key}"
+
+
+def parse_time_bound(value: Any, *, end_of_day: bool = False) -> float | None:
+    """Convierte ISO, fecha o MJD a MJD. ``None`` o vacío no filtran."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return float(Time(value, scale="utc").mjd)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    if _NUMERIC.fullmatch(text):
+        return float(text)
+    if _DATE_ONLY.fullmatch(text):
+        text = f"{text}T23:59:59.999" if end_of_day else f"{text}T00:00:00"
+    try:
+        return float(Time(text.replace("Z", ""), format="isot", scale="utc").mjd)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(
+            f"timestamp no válido: {value!r}. Use ISO-8601 (2025-05-01 o 2025-05-01T12:00:00) o MJD."
+        ) from exc
+
+
+def normalize_time_range(
+    time_start: Any = None, time_end: Any = None
+) -> tuple[float | None, float | None]:
+    """Devuelve (MJD mínimo, MJD máximo) inclusivos. Sin valores, no hay filtro."""
+    tmin = parse_time_bound(time_start, end_of_day=False)
+    tmax = parse_time_bound(time_end, end_of_day=True)
+    if tmin is not None and tmax is not None and tmin > tmax:
+        raise ValueError("time_start no puede ser posterior a time_end.")
+    return tmin, tmax
+
+
+def filter_records_by_time(
+    records: list[IrsaRecord],
+    time_min_mjd: float | None,
+    time_max_mjd: float | None,
+) -> list[IrsaRecord]:
+    if time_min_mjd is None and time_max_mjd is None:
+        return records
+    kept: list[IrsaRecord] = []
+    for record in records:
+        t = record.time_mjd
+        if t is None:
+            continue
+        if time_min_mjd is not None and t < time_min_mjd:
+            continue
+        if time_max_mjd is not None and t > time_max_mjd:
+            continue
+        kept.append(record)
+    return kept
+
+
+def _tap_adql(
+    ra: float,
+    dec: float,
+    bandpass: str,
+    qr: str,
+    time_min_mjd: float | None = None,
+    time_max_mjd: float | None = None,
+) -> str:
     uri_fragment = KNOWN_RELEASES[qr]["uri_fragment"]
+    clauses = [
+        f"1 = CONTAINS(POINT('ICRS', {ra}, {dec}), p.poly)",
+        f"p.energy_bandpassname = '{bandpass}'",
+        f"a.uri LIKE '%{uri_fragment}%'",
+    ]
+    if time_min_mjd is not None:
+        clauses.append(f"p.time_bounds_lower >= {time_min_mjd:.8f}")
+    if time_max_mjd is not None:
+        clauses.append(f"p.time_bounds_lower <= {time_max_mjd:.8f}")
+    where = "\n      AND ".join(clauses)
     return f"""
 SELECT
     '{IRSA_BASE_URL}' || a.uri AS access_url,
@@ -134,9 +239,7 @@ SELECT
     p.energy_bandpassname
 FROM spherex.artifact a
 JOIN spherex.plane p ON a.planeid = p.planeid
-WHERE 1 = CONTAINS(POINT('ICRS', {ra}, {dec}), p.poly)
-      AND p.energy_bandpassname = '{bandpass}'
-      AND a.uri LIKE '%{uri_fragment}%'
+WHERE {where}
 ORDER BY p.time_bounds_lower
 """.strip()
 
@@ -171,17 +274,35 @@ def query_tap(
     qr: str = DEFAULT_QR,
     bandpass: str = DEFAULT_BANDPASS,
     detector: int | str | None = None,
+    time_start: Any = None,
+    time_end: Any = None,
 ) -> list[IrsaRecord]:
-    """Busca todas las épocas SPHEREx de un QR + banda que cubren (ra, dec)."""
+    """Busca épocas SPHEREx de un QR + banda que cubren (ra, dec), opcionalmente en un intervalo."""
     qr = normalize_qr(qr)
     bandpass = resolve_bandpass(bandpass, detector)
-    adql = _tap_adql(ra, dec, bandpass, qr)
+    time_min_mjd, time_max_mjd = normalize_time_range(time_start, time_end)
+    adql = _tap_adql(
+        ra,
+        dec,
+        bandpass,
+        qr,
+        time_min_mjd=time_min_mjd,
+        time_max_mjd=time_max_mjd,
+    )
     errors: list[str] = []
     table = None
     for method, fn in (("pyvo", _query_tap_pyvo), ("http", _query_tap_http)):
         try:
             table = fn(adql)
-            LOGGER.info("Consulta TAP IRSA (%s, %s, %s): %s filas", method, qr, bandpass, len(table))
+            LOGGER.info(
+                "Consulta TAP IRSA (%s, %s, %s, time=%s..%s): %s filas",
+                method,
+                qr,
+                bandpass,
+                time_start,
+                time_end,
+                len(table),
+            )
             break
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{method}: {exc}")
@@ -202,7 +323,7 @@ def query_tap(
                 bandpass=band,
             )
         )
-    return records
+    return filter_records_by_time(records, time_min_mjd, time_max_mjd)
 
 
 def query_sia(
@@ -213,20 +334,26 @@ def query_sia(
     qr: str = DEFAULT_QR,
     bandpass: str = DEFAULT_BANDPASS,
     detector: int | str | None = None,
+    time_start: Any = None,
+    time_end: Any = None,
 ) -> list[IrsaRecord]:
     """Respaldo: Simple Image Access v2 de IRSA, acotado al QR pedido."""
     qr = normalize_qr(qr)
     bandpass = resolve_bandpass(bandpass, detector)
+    time_min_mjd, time_max_mjd = normalize_time_range(time_start, time_end)
     collection = KNOWN_RELEASES[qr]["sia_collection"]
     radius = max(size_deg / 2.0, 1.0 / 3600.0)
-    params = urllib.parse.urlencode(
-        {
-            "COLLECTION": collection,
-            "POS": f"circle {ra} {dec} {radius}",
-            "RESPONSEFORMAT": "votable",
-        }
-    )
-    url = f"{IRSA_SIA_URL}?{params}"
+    params: dict[str, str] = {
+        "COLLECTION": collection,
+        "POS": f"circle {ra} {dec} {radius}",
+        "RESPONSEFORMAT": "votable",
+    }
+    if time_min_mjd is not None or time_max_mjd is not None:
+        lo = "-Inf" if time_min_mjd is None else f"{time_min_mjd:.8f}"
+        hi = "+Inf" if time_max_mjd is None else f"{time_max_mjd:.8f}"
+        params["TIME"] = f"{lo} {hi}"
+    encoded = urllib.parse.urlencode(params)
+    url = f"{IRSA_SIA_URL}?{encoded}"
     try:
         with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_S) as response:
             table = Table.read(io.BytesIO(response.read()), format="votable")
@@ -253,7 +380,15 @@ def query_sia(
             )
         )
     records.sort(key=lambda item: item.time_mjd if item.time_mjd is not None else 0.0)
-    LOGGER.info("Consulta SIA IRSA (%s, %s): %s filas", qr, bandpass, len(records))
+    records = filter_records_by_time(records, time_min_mjd, time_max_mjd)
+    LOGGER.info(
+        "Consulta SIA IRSA (%s, %s, time=%s..%s): %s filas",
+        qr,
+        bandpass,
+        time_start,
+        time_end,
+        len(records),
+    )
     return records
 
 
@@ -265,18 +400,36 @@ def query_observations(
     qr: str = DEFAULT_QR,
     bandpass: str = DEFAULT_BANDPASS,
     detector: int | str | None = None,
+    time_start: Any = None,
+    time_end: Any = None,
 ) -> list[IrsaRecord]:
     """TAP primero; si falla o no hay filas, SIA del mismo QR."""
     qr = normalize_qr(qr)
     bandpass = resolve_bandpass(bandpass, detector)
     try:
-        records = query_tap(ra, dec, size_deg, qr=qr, bandpass=bandpass)
+        records = query_tap(
+            ra,
+            dec,
+            size_deg,
+            qr=qr,
+            bandpass=bandpass,
+            time_start=time_start,
+            time_end=time_end,
+        )
         if records:
             return records
         LOGGER.warning("TAP no devolvió imágenes para %s %s; se intenta SIA.", qr, bandpass)
     except Exception as exc:  # noqa: BLE001
         LOGGER.warning("TAP no disponible (%s); se intenta SIA.", exc)
-    return query_sia(ra, dec, size_deg, qr=qr, bandpass=bandpass)
+    return query_sia(
+        ra,
+        dec,
+        size_deg,
+        qr=qr,
+        bandpass=bandpass,
+        time_start=time_start,
+        time_end=time_end,
+    )
 
 
 def subsample_epochs(records: list[IrsaRecord], max_observations: int | None) -> list[IrsaRecord]:
@@ -288,30 +441,126 @@ def subsample_epochs(records: list[IrsaRecord], max_observations: int | None) ->
     return [records[int(index)] for index in indices]
 
 
-def download_cutout(url: str, cache_dir: Path | None = None) -> Path:
-    """Descarga un cutout FITS a caché local, con reintentos."""
-    cache_dir = Path(cache_dir or CACHE_DIR)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+_UNAVAILABLE_HTTP = {502, 503, 504}
+_CHUNK_BYTES = 1024 * 1024
+
+
+def _http_status(exc: BaseException) -> int | None:
+    if isinstance(exc, urllib.error.HTTPError):
+        return int(exc.code)
+    return None
+
+
+def _is_unavailable(exc: BaseException) -> bool:
+    return _http_status(exc) in _UNAVAILABLE_HTTP
+
+
+def _cache_path(url: str, cache_dir: Path, prefix: str) -> Path:
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-    dest = cache_dir / f"cutout_{digest}.fits"
+    return cache_dir / f"{prefix}_{digest}.fits"
+
+
+def _download_to_path(
+    url: str,
+    dest: Path,
+    *,
+    retry_unavailable: bool = True,
+) -> Path:
+    """Descarga ``url`` a ``dest`` en streaming. Si ya existe y no está vacío, no toca red."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.stat().st_size > 0:
         return dest
 
     last_error: Exception | None = None
+    tmp = dest.with_name(f".{dest.name}.part")
     for attempt in range(DOWNLOAD_RETRIES):
         try:
             request = urllib.request.Request(url)
             with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT_S) as response:
-                dest.write_bytes(response.read())
-            if dest.stat().st_size == 0:
-                raise RuntimeError(f"Cutout vacío: {url}")
+                with tmp.open("wb") as handle:
+                    while True:
+                        chunk = response.read(_CHUNK_BYTES)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+            if tmp.stat().st_size == 0:
+                tmp.unlink(missing_ok=True)
+                raise RuntimeError(f"Archivo vacío: {url}")
+            tmp.replace(dest)
             return dest
-        except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, Exception) as exc:
+        except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, OSError, RuntimeError) as exc:
             last_error = exc
+            tmp.unlink(missing_ok=True)
+            if dest.exists() and dest.stat().st_size == 0:
+                dest.unlink(missing_ok=True)
+            if (not retry_unavailable) and _is_unavailable(exc):
+                raise
+            if attempt + 1 >= DOWNLOAD_RETRIES:
+                break
             wait = 10 * (attempt + 1)
-            LOGGER.warning("Descarga fallida (%s/%s): %s. Reintento en %ss", attempt + 1, DOWNLOAD_RETRIES, exc, wait)
+            LOGGER.warning(
+                "Descarga fallida (%s/%s): %s. Reintento en %ss",
+                attempt + 1,
+                DOWNLOAD_RETRIES,
+                exc,
+                wait,
+            )
             time.sleep(wait)
-    raise RuntimeError(f"No se pudo descargar el cutout {url}") from last_error
+    raise RuntimeError(f"No se pudo descargar {url}") from last_error
+
+
+def download_cutout(url: str, cache_dir: Path | None = None) -> Path:
+    """Descarga un cutout FITS a caché. Ante 502/503/504 no reintenta (el backend SPHEREx no vuelve)."""
+    cache_dir = Path(cache_dir or CACHE_DIR)
+    dest = _cache_path(url, cache_dir, "cutout")
+    return _download_to_path(url, dest, retry_unavailable=False)
+
+
+def download_record(record: IrsaRecord, cache_dir: Path | None = None) -> DownloadResult:
+    """Cutout IBE primero; si ese servicio no responde, MEF completo (S3, luego IBE)."""
+    cache_dir = Path(cache_dir or CACHE_DIR)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    cutout_dest = _cache_path(record.cutout_url, cache_dir, "cutout")
+    cutout_error: Exception | None = None
+    try:
+        path = _download_to_path(record.cutout_url, cutout_dest, retry_unavailable=False)
+        LOGGER.info("Cutout IBE: %s", record.cutout_url.split("/")[-1])
+        return DownloadResult(path=path, url=record.cutout_url, kind="cutout")
+    except Exception as exc:  # noqa: BLE001
+        cutout_error = exc
+        if _is_unavailable(exc):
+            LOGGER.warning(
+                "Cutout IBE no disponible (%s); se descarga el MEF completo.",
+                _http_status(exc) or exc,
+            )
+        else:
+            LOGGER.warning("Cutout IBE falló (%s); se intenta el MEF completo.", exc)
+
+    mef_access = full_mef_url(record.access_url)
+    candidates: list[tuple[str, str]] = []
+    s3_url = s3_mef_url(record.access_url)
+    if s3_url:
+        candidates.append((s3_url, "s3"))
+    if mef_access and mef_access != s3_url:
+        candidates.append((mef_access, "ibe"))
+
+    errors: list[str] = []
+    for url, host in candidates:
+        dest = _cache_path(url, cache_dir, "mef")
+        try:
+            path = _download_to_path(url, dest, retry_unavailable=True)
+            LOGGER.info("MEF %s (%s): %s", host, path.stat().st_size, url.split("/")[-1])
+            return DownloadResult(path=path, url=url, kind="mef")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{host}: {exc}")
+            LOGGER.warning("MEF %s falló: %s", host, exc)
+
+    detail = " | ".join(errors) if errors else str(cutout_error)
+    raise RuntimeError(
+        f"No se pudo obtener {mef_access.split('/')[-1]} "
+        f"(cutout IBE y MEF). {detail}"
+    ) from cutout_error
 
 
 def _optional_float(row, column: str) -> float | None:
