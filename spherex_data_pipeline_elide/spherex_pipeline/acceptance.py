@@ -40,7 +40,7 @@ def _yn(ok: bool) -> str:
 def _run_error_cases() -> dict[str, str]:
     results: dict[str, str] = {}
 
-    with patch("spherex_pipeline.pipeline.query_observations", return_value=[]):
+    with patch("spherex_pipeline.spectral_select.query_observations", return_value=[]):
         empty = run_pipeline(RA, DEC, SIZE, qr=QR, bandpass=BANDPASS, source="irsa")
         demo_leaked = any(str(obs.id).startswith("DEMO") for obs in empty.observations)
         results["empty region"] = _yn(empty.observations == [] and not demo_leaked)
@@ -256,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         bandpass=args.bandpass,
         source="irsa",
         max_observations=None,
+        method="original",
     )
     text = format_report(result, error_cases, qr3_leak, qr3_status, bp_note, bp_status)
     sys.stdout.write(text)

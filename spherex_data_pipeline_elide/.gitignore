@@ -9,4 +9,6 @@ build/
 .coverage
 htmlcov/
 data/cache/
+data/cache_select_fallback/
+data/images_select/
 *.fits.gz

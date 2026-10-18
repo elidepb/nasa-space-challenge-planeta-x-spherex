@@ -46,6 +46,7 @@ def test_tap_n_matches_get_observations_all_epochs():
         bandpass=BANDPASS,
         source="irsa",
         max_observations=None,
+        method="original",
     )
     observations = result.observations
     report = result.report

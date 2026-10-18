@@ -8,6 +8,8 @@ IRSA_TAP_URL = "https://irsa.ipac.caltech.edu/TAP"
 IRSA_TAP_SYNC_URL = "https://irsa.ipac.caltech.edu/TAP/sync"
 IRSA_BASE_URL = "https://irsa.ipac.caltech.edu/"
 IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
+IBE_SPHEREX_DATA_MARKER = "/ibe/data/spherex/"
+SPHEREX_S3_HTTPS_BASE = "https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com"
 
 KNOWN_RELEASES = {
     "qr2": {"sia_collection": "spherex_qr2", "uri_fragment": "/spherex/qr2/"},
@@ -20,6 +22,8 @@ KNOWN_BANDPASSES = tuple(f"SPHEREx-D{i}" for i in range(1, 7))
 DEFAULT_QR = "qr2"
 DEFAULT_BANDPASS = "SPHEREx-D2"
 DEFAULT_SOURCE = "irsa"
+DEFAULT_PIPELINE_METHOD = "spectral"
+DEFAULT_SPECTRAL_GROUP = 7
 
 # λ/Δλ del Level-2 salen del WCS espectral del producto, no de CWAVE/CBAND.
 SPECTRAL_UNIT = "μm"

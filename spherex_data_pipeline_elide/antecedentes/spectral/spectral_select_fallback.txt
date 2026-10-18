@@ -1,0 +1,111 @@
+1. Consultando catálogo...
+   -> TAP IRSA: 84 observaciones catalogadas.
+
+=======================================================================================================
+DISTRIBUCION ESPECTRO-TEMPORAL COMPLETA (SPHEREx-D2 | 17 Canales x 3 Surveys)
+=======================================================================================================
+Grupo  Rango λ (μm)            λ Centro        Survey 1    Survey 2    Survey 3   Total  Estado          
+-------------------------------------------------------------------------------------------------------
+#01    1.0880 – 1.1214         1.1047                 2           2           2       6
+#02    1.1214 – 1.1548         1.1381                 1           1           2       4
+#03    1.1548 – 1.1882         1.1715                 2           2           2       6
+#04    1.1882 – 1.2216         1.2049                 1           1           2       4
+#05    1.2216 – 1.2551         1.2384                 2           2           2       6
+#06    1.2551 – 1.2885         1.2718                 1           1           1       3
+#07    1.2885 – 1.3219         1.3052                 2           2           2       6  <<< SELECCIONADO
+#08    1.3219 – 1.3553         1.3386                 1           1           2       4
+#09    1.3553 – 1.3887         1.3720                 2           2           2       6
+#10    1.3887 – 1.4221         1.4054                 1           1           2       4
+#11    1.4221 – 1.4555         1.4388                 2           2           2       6
+#12    1.4555 – 1.4889         1.4722                 1           1           1       3
+#13    1.4889 – 1.5224         1.5056                 2           2           2       6
+#14    1.5224 – 1.5558         1.5391                 1           1           2       4
+#15    1.5558 – 1.5892         1.5725                 2           2           2       6
+#16    1.5892 – 1.6226         1.6059                 1           1           2       4
+#17    1.6226 – 1.6560         1.6393                 2           2           2       6
+-------------------------------------------------------------------------------------------------------
+Total observaciones                                26          26          32      84
+=======================================================================================================
+
+2. Extrayendo imagenes para el Grupo #07 (6 observaciones)...
+   -> REAL FITS cutout_c3c48d305bd84eca.fits (5071680 B) id=obs_1
+   -> REAL FITS cutout_bfc6f66d9ef0541f.fits (5071680 B) id=obs_2
+   -> REAL FITS cutout_cb54985d8975a897.fits (5071680 B) id=obs_3
+   -> REAL FITS cutout_39da3e990112e3d7.fits (5071680 B) id=obs_4
+   -> REAL FITS cutout_6f11b2fb672bfa26.fits (5074560 B) id=obs_5
+   [Aviso IRSA] HTTP Error 503: Service Unavailable. Activando fallback sin reintentos...
+   -> FALLBACK synthetic_survey id=obs_6 λ_asignada=1.3052
+
+3. Visualizacion del canal seleccionado (Grupo #07):
++--------------------------------------------------------------------------+
+| SURVEY 1 (2025-05-15)                                                    |
++--------------------------------------------------------------------------+
+| Observation ID : obs_1                                                   |
+| Fecha y Hora UTC: 2025-05-15T20:59:51                                    |
+| Longitud Onda λ: 1.305176 μm                                             |
+| Ancho Banda Δλ : 0.033400 μm                                             |
+| Dimensiones    : 64x64 px | Detector: SPHEREx-D2                         |
+| Fuente de Datos: data/cache_select_fallback/cutout_c3c48d305bd84eca.fits |
+| Origen         : spherex_fits                                            |
++--------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------+
+| SURVEY 2 (2025-12-07)                                                    |
++--------------------------------------------------------------------------+
+| Observation ID : obs_3                                                   |
+| Fecha y Hora UTC: 2025-12-07T22:47:38                                    |
+| Longitud Onda λ: 1.305176 μm                                             |
+| Ancho Banda Δλ : 0.033400 μm                                             |
+| Dimensiones    : 64x64 px | Detector: SPHEREx-D2                         |
+| Fuente de Datos: data/cache_select_fallback/cutout_cb54985d8975a897.fits |
+| Origen         : spherex_fits                                            |
++--------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------+
+| SURVEY 3 (2026-05-23)                                                    |
++--------------------------------------------------------------------------+
+| Observation ID : obs_5                                                   |
+| Fecha y Hora UTC: 2026-05-23T03:45:52                                    |
+| Longitud Onda λ: 1.305176 μm                                             |
+| Ancho Banda Δλ : 0.033400 μm                                             |
+| Dimensiones    : 64x64 px | Detector: SPHEREx-D2                         |
+| Fuente de Datos: data/cache_select_fallback/cutout_6f11b2fb672bfa26.fits |
+| Origen         : spherex_fits                                            |
++--------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------+
+| PAR PARA SUSTRACCION TEMPORAL (IMAGE DIFFERENCING)                       |
++--------------------------------------------------------------------------+
+| Survey Referencia : Survey 1 (ID: obs_1, λ = 1.305176 μm)                |
+| Survey Objetivo   : Survey 2 (ID: obs_3, λ = 1.305176 μm)                |
+| Diferencia Δλ     : 0.000000 μm (asignada por indice, no WCS-WAVE)       |
+| Estado Operativo  : Matrices 2D homogeneas listas para deteccion de movi |
++--------------------------------------------------------------------------+
+
+
+==================================================================================================
+ REPORTE DE RENDIMIENTO Y MEDICION DE TIEMPOS
+==================================================================================================
+Etapa del Proceso                                      Tiempo (s)   RAM Neta (MB)   Pico RAM (MB)
+--------------------------------------------------------------------------------------------------
+1. Consulta de catalogo (TAP IRSA o demo)                  9.4755           10.23           10.29
+2. Particion de Surveys y matriz 17 bins                   0.0568            0.02           10.28
+3. Carga y procesamiento FITS (Grupo #07)                124.9543            0.78           13.41
+4. Homogeneizacion y agrupacion por epocas                 0.0002            0.26           11.33
+5. Renderizado de tarjetas en terminal                     0.0005            0.01           11.33
+6. Generacion de PNG                                       0.0285            0.20           11.88
+--------------------------------------------------------------------------------------------------
+TIEMPO TOTAL HASTA VER LAS IMAGENES (S2E)                134.5158               —           13.41
+==================================================================================================
+
+ ARCHIVOS RENDERIZADOS Y ORIGEN DE DATOS:
+  * Objetos Observation cargados       : 6
+  * FITS SPHEREx reales leidos         : 5
+  * Fallback demo/sintetico            : 1
+  * RAM arrays NumPy (nbytes)          : 0.40 MB  (24576 px)
+  * Imagenes PNG generadas             : 6 archivos
+  * Directorio de salida               : data/images_select/fallback
+  * Peso total PNG                     : 17.96 KB
+  * Promedio de tiempo por PNG         : 0.0047 s/imagen
+==================================================================================================
+
