@@ -11,9 +11,11 @@ from typing import Any
 
 import numpy as np
 from astropy import units as u
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
+from astropy.wcs.utils import skycoord_to_pixel
 
 from spherex_pipeline.constants import (
     DETECTOR_WAVELENGTH_UM,
@@ -144,17 +146,50 @@ def _spectral_calibration_source(source: str | None) -> str:
     return text or "unavailable"
 
 
-def _wavelength_from_wcs_wave(hdulist: fits.HDUList, header: fits.Header) -> SpectralSample | None:
+def _sample_pixel(
+    header: fits.Header,
+    ny: int,
+    nx: int,
+    ra: float | None,
+    dec: float | None,
+) -> tuple[float, float, bool]:
+    """Píxel a muestrear: (ra, dec) si cae en la imagen; si no, el centro."""
+    if ra is None or dec is None:
+        return nx / 2.0 - 0.5, ny / 2.0 - 0.5, False
+    spatial = _spatial_wcs(header)
+    if spatial is None:
+        return nx / 2.0 - 0.5, ny / 2.0 - 0.5, False
+    try:
+        x, y = skycoord_to_pixel(
+            SkyCoord(ra=ra, dec=dec, unit="deg", frame="icrs"),
+            spatial,
+            origin=0,
+        )
+        px, py = float(x), float(y)
+    except Exception:  # noqa: BLE001
+        return nx / 2.0 - 0.5, ny / 2.0 - 0.5, False
+    if 0.0 <= px < nx and 0.0 <= py < ny:
+        return px, py, True
+    return nx / 2.0 - 0.5, ny / 2.0 - 0.5, False
+
+
+def _wavelength_from_wcs_wave(
+    hdulist: fits.HDUList,
+    header: fits.Header,
+    ra: float | None = None,
+    dec: float | None = None,
+) -> SpectralSample | None:
     image_hdu = _hdu_by_name(hdulist, "IMAGE") or hdulist[1]
     if image_hdu is None or image_hdu.data is None:
         return None
     try:
         ny, nx = image_hdu.data.shape[-2:]
+        px, py, at_target = _sample_pixel(header, ny, nx, ra, dec)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             spectral = WCS(header=image_hdu.header, fobj=hdulist, key="W")
         spectral.sip = None
-        world = spectral.pixel_to_world(nx / 2.0 - 0.5, ny / 2.0 - 0.5)
+        world = spectral.pixel_to_world(px, py)
     except Exception as exc:  # noqa: BLE001
         LOGGER.debug("WCS espectral no disponible: %s", exc)
         return None
@@ -175,7 +210,11 @@ def _wavelength_from_wcs_wave(hdulist: fits.HDUList, header: fits.Header) -> Spe
 
     if wavelength is None or not np.isfinite(wavelength) or wavelength <= 0:
         return None
-    source = "WCS-WAVE (IMAGE WCS key=W, píxel central del cutout)"
+    source = (
+        "WCS-WAVE (IMAGE WCS key=W, píxel de (ra, dec))"
+        if at_target
+        else "WCS-WAVE (IMAGE WCS key=W, píxel central del cutout)"
+    )
     return SpectralSample(
         wavelength_um=wavelength,
         bandwidth_um=bandwidth if bandwidth is not None and np.isfinite(bandwidth) else None,
@@ -213,12 +252,14 @@ def extract_spectral(
     header: fits.Header,
     detector: int | str,
     fallback: float | None = None,
+    ra: float | None = None,
+    dec: float | None = None,
 ) -> SpectralSample:
     """λ y Δλ del producto. CWAVE/CBAND se usan solo si existen en el MEF."""
     sample = _wavelength_from_cwave(hdulist)
     if sample is not None:
         return sample
-    sample = _wavelength_from_wcs_wave(hdulist, header)
+    sample = _wavelength_from_wcs_wave(hdulist, header, ra=ra, dec=dec)
     if sample is not None:
         return sample
 
@@ -305,12 +346,21 @@ def observation_from_fits(
 ) -> Observation:
     """Abre un FITS SPHEREx y construye un Observation (aún sin máscara)."""
     source = str(path_or_url)
-    with fits.open(source, memmap=False) as hdulist:
+    source_path = Path(source)
+    use_memmap = source_path.exists() and source_path.stat().st_size > 8 * 1024 * 1024
+    with fits.open(source, memmap=use_memmap) as hdulist:
         extracted = extract_extensions(hdulist)
         header = extracted["header"]
         detector = _detector_from_header_or_name(header, source)
         timestamp = _timestamp_from_header(header, fallback_mjd=timestamp_mjd)
-        spectral = extract_spectral(hdulist, header, detector, fallback=wavelength_fallback)
+        spectral = extract_spectral(
+            hdulist,
+            header,
+            detector,
+            fallback=wavelength_fallback,
+            ra=ra,
+            dec=dec,
+        )
 
         wcs = extracted["wcs"]
         if ra is None or dec is None:

@@ -6,16 +6,20 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from astropy.time import Time
 from astropy.utils.data import conf as astropy_data_conf
 
 from spherex_pipeline.constants import (
     CACHE_DIR,
     DEFAULT_BANDPASS,
     DEFAULT_MAX_WORKERS,
+    DEFAULT_PIPELINE_METHOD,
     DEFAULT_QR,
     DEFAULT_SOURCE,
+    DEFAULT_SPECTRAL_GROUP,
     REMOTE_TIMEOUT_S,
 )
 from spherex_pipeline.cutouts import cutout_region, homogenize_shapes
@@ -24,8 +28,9 @@ from spherex_pipeline.fits_reader import observation_from_fits
 from spherex_pipeline.irsa import (
     IrsaRecord,
     dedupe_records,
-    download_cutout,
+    download_record,
     normalize_qr,
+    normalize_time_range,
     query_observations,
     resolve_bandpass,
     subsample_epochs,
@@ -59,6 +64,8 @@ class RetrievalReport:
     failed_downloads: int = 0
     failed_parses: int = 0
     duplicates: int = 0
+    cutout_downloads: int = 0
+    mef_fallbacks: int = 0
     failures: list[FailureRecord] = field(default_factory=list)
 
 
@@ -96,6 +103,22 @@ def _prepare(observations: list[Observation], ra: float, dec: float, size: float
     return prepared
 
 
+def _observation_in_time_range(
+    observation: Observation, time_min_mjd: float | None, time_max_mjd: float | None
+) -> bool:
+    if time_min_mjd is None and time_max_mjd is None:
+        return True
+    try:
+        mjd = float(Time(observation.timestamp, format="isot", scale="utc").mjd)
+    except Exception:  # noqa: BLE001
+        return False
+    if time_min_mjd is not None and mjd < time_min_mjd:
+        return False
+    if time_max_mjd is not None and mjd > time_max_mjd:
+        return False
+    return True
+
+
 def _from_irsa(
     ra: float,
     dec: float,
@@ -105,8 +128,18 @@ def _from_irsa(
     max_observations: int | None,
     cache_dir: Path,
     max_workers: int,
+    time_start: Any = None,
+    time_end: Any = None,
 ) -> tuple[list[Observation], RetrievalReport]:
-    raw_records = query_observations(ra, dec, size, qr=qr, bandpass=bandpass)
+    raw_records = query_observations(
+        ra,
+        dec,
+        size,
+        qr=qr,
+        bandpass=bandpass,
+        time_start=time_start,
+        time_end=time_end,
+    )
     unique_records, n_dupes = dedupe_records(raw_records)
     records = subsample_epochs(unique_records, max_observations)
     report = RetrievalReport(
@@ -120,14 +153,13 @@ def _from_irsa(
     observations: list[Observation] = []
 
     def _one(record: IrsaRecord):
-        url = record.cutout_url
         try:
-            local = download_cutout(url, cache_dir=cache_dir)
+            downloaded = download_record(record, cache_dir=cache_dir)
         except Exception as exc:  # noqa: BLE001
-            return ("download", record, None, exc)
+            return ("download", record, None, exc, None)
         try:
             obs = observation_from_fits(
-                local,
+                downloaded.path,
                 observation_id=record.obs_id,
                 ra=ra,
                 dec=dec,
@@ -138,23 +170,29 @@ def _from_irsa(
                     "source": "irsa",
                     "access_url": record.access_url,
                     "cutout_url": record.cutout_url,
-                    "local_path": str(local),
+                    "download_url": downloaded.url,
+                    "download_kind": downloaded.kind,
+                    "local_path": str(downloaded.path),
                 },
             )
             obs.fits_source = record.access_url
-            return ("ok", record, obs, None)
+            return ("ok", record, obs, None, downloaded)
         except Exception as exc:  # noqa: BLE001
-            return ("parse", record, None, exc)
+            return ("parse", record, None, exc, downloaded)
 
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
         futures = [pool.submit(_one, record) for record in records]
         for future in as_completed(futures):
-            stage, record, obs, exc = future.result()
+            stage, record, obs, exc, downloaded = future.result()
             ident = record.obs_id or record.access_url.split("/")[-1]
             if stage == "ok":
                 observations.append(obs)
                 report.downloaded += 1
                 report.parsed += 1
+                if downloaded is not None and downloaded.kind == "mef":
+                    report.mef_fallbacks += 1
+                else:
+                    report.cutout_downloads += 1
             elif stage == "download":
                 report.failed_downloads += 1
                 report.failures.append(
@@ -185,6 +223,45 @@ def _from_irsa(
     return observations, report
 
 
+def _from_spectral(
+    ra: float,
+    dec: float,
+    size: float,
+    qr: str,
+    bandpass: str,
+    group: int,
+    max_observations: int | None,
+    cache_dir: Path,
+    time_start: Any = None,
+    time_end: Any = None,
+) -> tuple[list[Observation], RetrievalReport]:
+    from spherex_pipeline.spectral_select import load_group_observations
+
+    loaded = load_group_observations(
+        ra,
+        dec,
+        size,
+        qr=qr,
+        bandpass=bandpass,
+        group=group,
+        source="irsa",
+        cache_dir=cache_dir,
+        max_observations=max_observations,
+        time_start=time_start,
+        time_end=time_end,
+        verbose=False,
+    )
+    report = RetrievalReport(
+        tap_matches=loaded.tap_matches,
+        requested=loaded.requested,
+        downloaded=loaded.n_real_fits,
+        parsed=loaded.n_real_fits,
+        observations=len(loaded.observations),
+        cutout_downloads=loaded.n_real_fits,
+    )
+    return loaded.observations, report
+
+
 def run_pipeline(
     ra: float,
     dec: float,
@@ -198,15 +275,29 @@ def run_pipeline(
     cache_dir: str | Path | None = None,
     max_workers: int = DEFAULT_MAX_WORKERS,
     demo_dir: str | Path | None = None,
+    time_start: Any = None,
+    time_end: Any = None,
+    method: str = DEFAULT_PIPELINE_METHOD,
+    group: int = DEFAULT_SPECTRAL_GROUP,
 ) -> PipelineResult:
-    """Ejecuta el pipeline y devuelve observaciones + informe de recuperación."""
+    """Ejecuta el pipeline y devuelve observaciones + informe de recuperación.
+
+    ``method="spectral"`` (defecto) baja solo el grupo espectral pedido vía IBE.
+    ``method="original"`` baja todas las épocas TAP (cutout IBE, MEF de respaldo).
+    """
     global LAST_RESULT
     source = source.lower().strip()
     if source not in {"demo", "irsa"}:
         raise ValueError("source debe ser 'irsa' o 'demo'")
+    method = method.lower().strip()
+    if method not in {"spectral", "original"}:
+        raise ValueError("method debe ser 'spectral' o 'original'")
+    if group < 1 or group > 17:
+        raise ValueError("group debe estar entre 1 y 17")
 
     qr = normalize_qr(qr)
     bandpass = resolve_bandpass(bandpass, detector)
+    time_min_mjd, time_max_mjd = normalize_time_range(time_start, time_end)
     query = {
         "ra": ra,
         "dec": dec,
@@ -215,11 +306,21 @@ def run_pipeline(
         "bandpass": bandpass,
         "source": source,
         "max_observations": max_observations,
+        "time_start": time_start,
+        "time_end": time_end,
+        "method": method,
+        "group": group,
     }
     LOGGER.info("run_pipeline %s", query)
 
     if source == "demo":
         observations = load_demo_observations(demo_dir)
+        if time_min_mjd is not None or time_max_mjd is not None:
+            observations = [
+                obs
+                for obs in observations
+                if _observation_in_time_range(obs, time_min_mjd, time_max_mjd)
+            ]
         prepared = _prepare(observations, ra, dec, size)
         for observation in prepared:
             observation.metadata["qr"] = qr
@@ -236,17 +337,35 @@ def run_pipeline(
         LAST_RESULT = result
         return result
 
-    observations, report = _from_irsa(
-        ra,
-        dec,
-        size,
-        qr=qr,
-        bandpass=bandpass,
-        max_observations=max_observations,
-        cache_dir=Path(cache_dir or CACHE_DIR),
-        max_workers=max_workers,
-    )
-    prepared = _prepare(observations, ra, dec, size)
+    cache = Path(cache_dir or CACHE_DIR)
+    if method == "original":
+        observations, report = _from_irsa(
+            ra,
+            dec,
+            size,
+            qr=qr,
+            bandpass=bandpass,
+            max_observations=max_observations,
+            cache_dir=cache,
+            max_workers=max_workers,
+            time_start=time_start,
+            time_end=time_end,
+        )
+        prepared = _prepare(observations, ra, dec, size)
+    else:
+        observations, report = _from_spectral(
+            ra,
+            dec,
+            size,
+            qr=qr,
+            bandpass=bandpass,
+            group=group,
+            max_observations=max_observations,
+            cache_dir=cache,
+            time_start=time_start,
+            time_end=time_end,
+        )
+        prepared = observations
     report.observations = len(prepared)
     result = PipelineResult(observations=prepared, report=report, query=query)
     LAST_RESULT = result
@@ -269,8 +388,18 @@ def get_observations(
     cache_dir: str | Path | None = None,
     max_workers: int = DEFAULT_MAX_WORKERS,
     demo_dir: str | Path | None = None,
+    time_start: Any = None,
+    time_end: Any = None,
+    method: str = DEFAULT_PIPELINE_METHOD,
+    group: int = DEFAULT_SPECTRAL_GROUP,
 ) -> list[Observation]:
-    """Devuelve todas las épocas SPHEREx de una región, ordenadas en el tiempo.
+    """Devuelve las épocas SPHEREx de una región, ordenadas en el tiempo.
+
+    Por defecto usa el método spectral: un grupo (1–17) vía cutout IBE.
+    ``method="original"`` recupera todas las épocas TAP.
+
+    ``time_start`` / ``time_end`` acotan TAP/SIA (ISO o MJD). Sin ellos se
+    piden todas las épocas del QR y la banda.
 
     Si TAP no encuentra productos, devuelve una lista vacía.
     Los fallos de descarga/parseo se registran en ``LAST_RESULT.report`` y
@@ -288,6 +417,10 @@ def get_observations(
         cache_dir=cache_dir,
         max_workers=max_workers,
         demo_dir=demo_dir,
+        time_start=time_start,
+        time_end=time_end,
+        method=method,
+        group=group,
     )
     if result.report.failures:
         details = " | ".join(item.line() for item in result.report.failures[:5])

@@ -1,0 +1,2 @@
+# Usa el venv de spherex_data_pipeline_elide (astropy, numpy, matplotlib, pillow, pyvo).
+# No instala el extractor original; solo lo importa para TAP/S3 URL.

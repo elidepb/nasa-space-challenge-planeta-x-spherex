@@ -1,0 +1,76 @@
+1. Consultando TAP IRSA...
+   -> 61 productos catalogados.
+   -> 2 surveys (hueco > 45 d).
+3. Pase 1: λ WCS-WAVE por Range (8 hilos, ~29 KB/archivo)...
+   ... 20/61  ok=20 fail=0  675 KB
+   ... 40/61  ok=40 fail=0  1170 KB
+   ... 60/61  ok=60 fail=0  1710 KB
+   ... 61/61  ok=61 fail=0  1716 KB
+   -> λ reales: 61  en el recorte: 61  fallos: 0
+
+===========================================================================================
+BINS REALES WCS-WAVE (SPHEREx-D6 | 17 x 2 surveys)
+===========================================================================================
+Grupo  Rango λ (μm)            λ Centro        Survey 1    Survey 2   Total  Estado          
+-------------------------------------------------------------------------------------------
+#01    4.4200 – 4.4541         4.4371               4           4       8
+#02    4.4541 – 4.4882         4.4712               2           3       5
+#03    4.4882 – 4.5224         4.5053               2           2       4
+#04    4.5224 – 4.5565         4.5394               2           1       3
+#05    4.5565 – 4.5906         4.5735               2           1       3
+#06    4.5906 – 4.6247         4.6076               2           1       3
+#07    4.6247 – 4.6588         4.6418               2           1       3  <<< SELECCIONADO
+#08    4.6588 – 4.6929         4.6759               1           1       2
+#09    4.6929 – 4.7271         4.7100               2           1       3
+#10    4.7271 – 4.7612         4.7441               2           1       3
+#11    4.7612 – 4.7953         4.7782               2           1       3
+#12    4.7953 – 4.8294         4.8124               2           1       3
+#13    4.8294 – 4.8635         4.8465               2           1       3
+#14    4.8635 – 4.8976         4.8806               2           1       3
+#15    4.8976 – 4.9318         4.9147               2           1       3
+#16    4.9318 – 4.9659         4.9488               3           1       4
+#17    4.9659 – 5.0000         4.9829               2           3       5
+===========================================================================================
+
+4. Grupo #07: 3 épocas a recortar (máx 2/survey)
+   REAL level2_2025W45_1A_0704_4D6_spx_l2b-v20-2025-311.fits  λ=4.638571 μm  shape=(499, 499)  4006080 B  survey=1
+   REAL level2_2025W44_2B_0412_2D6_spx_l2b-v20-2025-307.fits  λ=4.629098 μm  shape=(499, 413)  3326400 B  survey=1
+   REAL level2_2026W15_1A_0077_3D6_spx_l2b-v24-2026-104.fits  λ=4.641901 μm  shape=(497, 497)  3983040 B  survey=2
+
+==========================================================================================
+ REPORTE LEAN (Range S3, sin PSF)
+==========================================================================================
+Etapa                                                  Tiempo (s)
+------------------------------------------------------------------------------------------
+1. Consulta TAP IRSA                                      14.9050
+2. Particion de surveys                                    0.0110
+3. Pase 1 λ WCS-WAVE (HTTP Range)                         22.0786
+5. Pase 2 cutout ciencia sin PSF (HTTP Range)            120.4138
+6. Homogeneizar y PNG                                      0.3604
+------------------------------------------------------------------------------------------
+TOTAL                                                    157.7688
+==========================================================================================
+  Observaciones reales     : 3
+  Fallback demo            : 0
+  HTTP Range requests      : 134
+  Bytes transferidos       : 48.21 MB (50553600 B)
+  FITS persistidos         : 11050.3 KB (data/cutouts_d6)
+  PNG                      : 191.38 KB (3 archivos)
+  λ real min–max           : 4.629098 – 4.641901 μm
+  Δλ entre extremos        : 0.012803 μm
+  shape                    : (499, 499)
+  WCS presente             : True
+==========================================================================================
+
+COMPARACION vs spectral_select (misma región M101 QR2 D2, 16 Oct 2026)
+Corrida                                            wall s    TAP s   FITS s  reales  fake   disco MB   PNG KB
+spectral_select demo --group 1                       0.85     0.13     0.14       0     1       0.00     8.22
+spectral_select irsa --size 0.02 (caché)            10.52     9.83     0.07       6     0      30.36     2.86
+spectral_select irsa --size 0.05 (IBE)             135.06     9.48   124.95       5     1      25.36    17.96
+LEAN Range S3 (esta corrida)                       157.77    14.91   142.49       3     0      10.79   191.38
+
+  wall vs IBE spectral_select : 0.9× más rápido
+  disco vs IBE spectral_select: 2× menos MB persistidos
+  transferido HTTP            : 48.21 MB  (IBE bajó ~25 MB de PSF)
+
+WALL_CLOCK=157.77 s

@@ -1,0 +1,95 @@
+1. Consultando catálogo...
+   -> TAP IRSA: 61 observaciones catalogadas.
+
+===========================================================================================
+DISTRIBUCION ESPECTRO-TEMPORAL COMPLETA (SPHEREx-D6 | 17 Canales x 2 Surveys)
+===========================================================================================
+Grupo  Rango λ (μm)            λ Centro        Survey 1    Survey 2   Total  Estado          
+-------------------------------------------------------------------------------------------
+#01    4.4200 – 4.4541         4.4371                 3           2       5
+#02    4.4541 – 4.4882         4.4712                 2           1       3
+#03    4.4882 – 4.5224         4.5053                 2           2       4
+#04    4.5224 – 4.5565         4.5394                 2           1       3
+#05    4.5565 – 4.5906         4.5735                 2           2       4
+#06    4.5906 – 4.6247         4.6076                 2           1       3
+#07    4.6247 – 4.6588         4.6418                 2           1       3  <<< SELECCIONADO
+#08    4.6588 – 4.6929         4.6759                 2           2       4
+#09    4.6929 – 4.7271         4.7100                 2           1       3
+#10    4.7271 – 4.7612         4.7441                 2           2       4
+#11    4.7612 – 4.7953         4.7782                 2           1       3
+#12    4.7953 – 4.8294         4.8124                 2           1       3
+#13    4.8294 – 4.8635         4.8465                 2           2       4
+#14    4.8635 – 4.8976         4.8806                 2           1       3
+#15    4.8976 – 4.9318         4.9147                 2           2       4
+#16    4.9318 – 4.9659         4.9488                 2           1       3
+#17    4.9659 – 5.0000         4.9829                 3           2       5
+-------------------------------------------------------------------------------------------
+Total observaciones                                36          25      61
+===========================================================================================
+
+2. Extrayendo imagenes para el Grupo #07 (3 observaciones)...
+   -> REAL FITS cutout_514077174e9ee524.fits (8366400 B) id=obs_1
+   -> REAL FITS cutout_551f7ae23d557968.fits (8354880 B) id=obs_2
+   -> REAL FITS cutout_511aef53d7f0107e.fits (7963200 B) id=obs_3
+
+3. Visualizacion del canal seleccionado (Grupo #07):
++--------------------------------------------------------------------------+
+| SURVEY 1 (2025-11-01)                                                    |
++--------------------------------------------------------------------------+
+| Observation ID : obs_1                                                   |
+| Fecha y Hora UTC: 2025-11-01T03:27:49                                    |
+| Longitud Onda λ: 4.641765 μm                                             |
+| Ancho Banda Δλ : 0.033400 μm                                             |
+| Dimensiones    : 498x496 px | Detector: SPHEREx-D6                       |
+| Fuente de Datos: data/cache_d6_newfield/cutout_514077174e9ee524.fits     |
+| Origen         : spherex_fits                                            |
++--------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------+
+| SURVEY 2 (2026-04-07)                                                    |
++--------------------------------------------------------------------------+
+| Observation ID : obs_3                                                   |
+| Fecha y Hora UTC: 2026-04-07T12:57:04                                    |
+| Longitud Onda λ: 4.641765 μm                                             |
+| Ancho Banda Δλ : 0.033400 μm                                             |
+| Dimensiones    : 498x496 px | Detector: SPHEREx-D6                       |
+| Fuente de Datos: data/cache_d6_newfield/cutout_511aef53d7f0107e.fits     |
+| Origen         : spherex_fits                                            |
++--------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------+
+| PAR PARA SUSTRACCION TEMPORAL (IMAGE DIFFERENCING)                       |
++--------------------------------------------------------------------------+
+| Survey Referencia : Survey 1 (ID: obs_1, λ = 4.641765 μm)                |
+| Survey Objetivo   : Survey 2 (ID: obs_3, λ = 4.641765 μm)                |
+| Diferencia Δλ     : 0.000000 μm (asignada por indice, no WCS-WAVE)       |
+| Estado Operativo  : Matrices 2D homogeneas listas para deteccion de movi |
++--------------------------------------------------------------------------+
+
+
+==================================================================================================
+ REPORTE DE RENDIMIENTO Y MEDICION DE TIEMPOS
+==================================================================================================
+Etapa del Proceso                                      Tiempo (s)   RAM Neta (MB)   Pico RAM (MB)
+--------------------------------------------------------------------------------------------------
+1. Consulta de catalogo (TAP IRSA o demo)                 15.8109           10.22           10.29
+2. Particion de Surveys y matriz 17 bins                   0.0416            0.02           10.26
+3. Carga y procesamiento FITS (Grupo #07)                 43.3851            9.70           22.22
+4. Homogeneizacion y agrupacion por epocas                 0.0025            2.37           23.16
+5. Renderizado de tarjetas en terminal                     0.0004            0.00           22.33
+6. Generacion de PNG                                       0.2881            0.31           38.43
+--------------------------------------------------------------------------------------------------
+TIEMPO TOTAL HASTA VER LAS IMAGENES (S2E)                 59.5286               —           38.43
+==================================================================================================
+
+ ARCHIVOS RENDERIZADOS Y ORIGEN DE DATOS:
+  * Objetos Observation cargados       : 3
+  * FITS SPHEREx reales leidos         : 3
+  * Fallback demo/sintetico            : 0
+  * RAM arrays NumPy (nbytes)          : 12.01 MB  (741024 px)
+  * Imagenes PNG generadas             : 3 archivos
+  * Directorio de salida               : data/images_select/d6_newfield
+  * Peso total PNG                     : 1509.87 KB
+  * Promedio de tiempo por PNG         : 0.0960 s/imagen
+==================================================================================================
+
