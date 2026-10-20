@@ -1,0 +1,57 @@
+# =====================================================================
+# Git Ignore - Scientific Motion Engine (Etner)
+# NASA Space Apps Challenge 2026 - SPHEREx Asteroid / Planet X Detector
+# =====================================================================
+
+# Entornos virtuales de Python
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Bytecode y compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Pruebas y cobertura de código
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.tox/
+
+# Empaquetado y distribución
+build/
+dist/
+*.egg-info/
+eggs/
+.eggs/
+parts/
+wheels/
+*.egg
+
+# Caches de Jupyter y notebooks
+.ipynb_checkpoints
+
+# IDEs, editores y herramientas locales
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Logs y archivos temporales
+*.log
+*.tmp
+*.temp
