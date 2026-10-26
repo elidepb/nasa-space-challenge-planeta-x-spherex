@@ -1,0 +1,3 @@
+id_deteccion,nombre_estrella,catalogo_origen,tipo_objeto,x_pix,y_pix,ra_deg,dec_deg,flujo_pico_mjy_sr,snr_pico,magnitud_ref,separacion_arcsec
+1,SPX-J149.998+02.002,Sin catalogar,Candidato,60.03,59.98,149.998242,2.001681,99.431,49.7,,
+2,MSDM 17.5+8,SIMBAD,EmG,39.97,75.02,150.032521,2.027369,91.893,45.9,,5.56

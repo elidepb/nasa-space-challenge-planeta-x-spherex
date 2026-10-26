@@ -162,7 +162,7 @@ def load_spherex_observation(
 
 
 # =========================================================
-# 3. FUNCIONES AUXILIARES DEL PIPELINE
+# 3. FUNCIONES AUXILIARES
 # =========================================================
 
 def smooth_gaussian_np(img: np.ndarray, sigma: float = 0.8) -> np.ndarray:
