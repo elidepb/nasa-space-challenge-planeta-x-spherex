@@ -341,18 +341,58 @@ h3 {
   height: 100%;
   object-fit: fill;
   image-rendering: pixelated;
+  will-change: opacity, transform, filter;
 }
 .viewer-image.crossfade-out {
   opacity: 1;
-  transition: opacity 0.45s ease;
+  transform: scale(1);
+  filter: brightness(1);
+  transition:
+    opacity 1s ease-in-out,
+    transform 1s ease-in-out,
+    filter 1s ease-in-out;
   z-index: 2;
   pointer-events: none;
 }
 .viewer-image.crossfade-out.is-fading {
   opacity: 0;
+  transform: scale(1.04);
+  filter: brightness(0.35);
 }
 .viewer-image.crossfade-in {
   z-index: 1;
+  transition:
+    opacity 1s ease-in-out,
+    transform 1s ease-in-out,
+    filter 1s ease-in-out;
+}
+.viewer-image.crossfade-in.is-hidden {
+  opacity: 0;
+  transform: scale(0.97);
+  filter: brightness(0.4);
+}
+.viewer-image.crossfade-in.is-visible {
+  opacity: 1;
+  transform: scale(1);
+  filter: brightness(1);
+}
+.viewer-fade-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55));
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out;
+}
+.viewer-fade-veil.is-active {
+  opacity: 1;
+  animation: viewer-veil-pulse 1s ease-in-out forwards;
+}
+@keyframes viewer-veil-pulse {
+  0% { opacity: 0; }
+  35% { opacity: 0.85; }
+  100% { opacity: 0; }
 }
 
 /* ---------- 102-band multi picker (horizontal wrap) ---------- */

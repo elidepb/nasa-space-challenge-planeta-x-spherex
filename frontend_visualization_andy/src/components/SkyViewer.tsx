@@ -41,7 +41,7 @@ interface Props {
   placeholder?: ReactNode
 }
 
-const CROSSFADE_MS = 450
+const CROSSFADE_MS = 1000
 
 interface View {
   k: number
@@ -67,7 +67,7 @@ export function SkyViewer(props: Props) {
   const [copied, setCopied] = useState(false)
   const [shownUrl, setShownUrl] = useState<string | null>(imageUrl)
   const [outgoingUrl, setOutgoingUrl] = useState<string | null>(null)
-  const [fadeOut, setFadeOut] = useState(false)
+  const [fadeActive, setFadeActive] = useState(false)
   const shownRef = useRef<string | null>(imageUrl)
   const drag = useRef<{ px: number; py: number; vx: number; vy: number; moved: boolean } | null>(null)
   const splitDrag = useRef(false)
@@ -84,7 +84,7 @@ export function SkyViewer(props: Props) {
       shownRef.current = null
       setShownUrl(null)
       setOutgoingUrl(null)
-      setFadeOut(false)
+      setFadeActive(false)
       return
     }
     if (imageUrl === shownRef.current) return
@@ -94,19 +94,24 @@ export function SkyViewer(props: Props) {
     if (!canFade) {
       setShownUrl(imageUrl)
       setOutgoingUrl(null)
-      setFadeOut(false)
+      setFadeActive(false)
       return
     }
     setOutgoingUrl(previous)
     setShownUrl(imageUrl)
-    setFadeOut(false)
-    const start = window.requestAnimationFrame(() => setFadeOut(true))
+    setFadeActive(false)
+    // Dos frames: montar en opacity 0 y luego activar la transición.
+    let raf2 = 0
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => setFadeActive(true))
+    })
     const done = window.setTimeout(() => {
       setOutgoingUrl(null)
-      setFadeOut(false)
+      setFadeActive(false)
     }, CROSSFADE_MS)
     return () => {
-      window.cancelAnimationFrame(start)
+      window.cancelAnimationFrame(raf1)
+      window.cancelAnimationFrame(raf2)
       window.clearTimeout(done)
     }
   }, [imageUrl, compareUrl, props.crossfade])
@@ -267,7 +272,7 @@ export function SkyViewer(props: Props) {
               src={shownUrl}
               alt={t('viewer.alt')}
               draggable={false}
-              className="viewer-image crossfade-in"
+              className={`viewer-image crossfade-in ${outgoingUrl ? (fadeActive ? 'is-visible' : 'is-hidden') : 'is-visible'}`}
               style={{ filter: props.imageFilter }}
             />
           )}
@@ -276,10 +281,11 @@ export function SkyViewer(props: Props) {
               src={outgoingUrl}
               alt=""
               draggable={false}
-              className={`viewer-image crossfade-out ${fadeOut ? 'is-fading' : ''}`}
+              className={`viewer-image crossfade-out ${fadeActive ? 'is-fading' : ''}`}
               style={{ filter: props.imageFilter }}
             />
           )}
+          {outgoingUrl && <div className={`viewer-fade-veil ${fadeActive ? 'is-active' : ''}`} aria-hidden />}
           {compareUrl && (
             <img
               src={compareUrl}
