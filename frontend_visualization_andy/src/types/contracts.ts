@@ -13,13 +13,18 @@ export interface RegionQuery {
   /** Lado del cutout en grados (igual que `size` en get_observations). */
   size: number
   qr?: string
-  /** Detector SPHEREx: SPHEREx-D1 … SPHEREx-D6. */
+  /** Detector SPHEREx: SPHEREx-D1 … SPHEREx-D6 (banda primaria / compat). */
   bandpass?: string
   /**
    * Canal espectral 1–17 dentro del detector (mismo `group` que
    * `get_observations(..., group=)` de Elide). Default del pipeline: 7.
    */
   group?: number
+  /**
+   * Selección múltiple de bandas globales 1–102
+   * (6 detectores × 17 canales). La primera es la primaria.
+   */
+  bands?: number[]
 }
 
 export interface ObservationSummary {

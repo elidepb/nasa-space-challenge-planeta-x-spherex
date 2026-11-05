@@ -15,8 +15,12 @@ export const BANDPASSES = [
 export type Bandpass = (typeof BANDPASSES)[number]
 
 export const N_SPECTRAL_GROUPS = 17
+/** 6 detectores × 17 canales = 102 bandas SPHEREx. */
+export const TOTAL_BANDS = BANDPASSES.length * N_SPECTRAL_GROUPS
 export const DEFAULT_BANDPASS: Bandpass = 'SPHEREx-D2'
 export const DEFAULT_SPECTRAL_GROUP = 7
+/** Índice global 1–102 del default (D2 · canal 7). */
+export const DEFAULT_BAND_INDEX = (2 - 1) * N_SPECTRAL_GROUPS + DEFAULT_SPECTRAL_GROUP
 
 /** μm — mismos límites que el pipeline de Elide. */
 export const DETECTOR_RANGES: Record<Bandpass, readonly [number, number]> = {
@@ -33,6 +37,14 @@ export interface SpectralBin {
   wlMin: number
   wlMax: number
   wlCenter: number
+}
+
+/** Una de las 102 bandas SPHEREx (índice global 1–102). */
+export interface GlobalBand extends SpectralBin {
+  /** 1 … 102 */
+  bandIndex: number
+  bandpass: Bandpass
+  detector: number
 }
 
 export function isBandpass(value: string): value is Bandpass {
@@ -75,6 +87,48 @@ export function approximateBandwidth(bandpass: string): number {
   const key = normalizeBandpass(bandpass)
   const [wMin, wMax] = DETECTOR_RANGES[key]
   return +((wMax - wMin) / N_SPECTRAL_GROUPS).toFixed(6)
+}
+
+export function clampBandIndex(index: number | undefined | null): number {
+  if (index == null || !Number.isFinite(index)) return DEFAULT_BAND_INDEX
+  return Math.min(TOTAL_BANDS, Math.max(1, Math.round(index)))
+}
+
+export function bandIndexFromParts(bandpass: string, group: number): number {
+  return (detectorNumber(bandpass) - 1) * N_SPECTRAL_GROUPS + clampSpectralGroup(group)
+}
+
+export function partsFromBandIndex(index: number): GlobalBand {
+  const bandIndex = clampBandIndex(index)
+  const detector = Math.ceil(bandIndex / N_SPECTRAL_GROUPS) as 1 | 2 | 3 | 4 | 5 | 6
+  const group = ((bandIndex - 1) % N_SPECTRAL_GROUPS) + 1
+  const bandpass = `SPHEREx-D${detector}` as Bandpass
+  const bin = getSpectralBin(bandpass, group)
+  return { bandIndex, bandpass, detector, ...bin }
+}
+
+/** Lista ordenada de las 102 bandas. */
+export function getAllBands(): GlobalBand[] {
+  return Array.from({ length: TOTAL_BANDS }, (_, i) => partsFromBandIndex(i + 1))
+}
+
+export function normalizeBands(
+  bands: number[] | undefined | null,
+  fallbackBandpass?: string | null,
+  fallbackGroup?: number | null,
+): number[] {
+  const raw = (bands ?? [])
+    .map((b) => clampBandIndex(b))
+    .filter((b, i, arr) => arr.indexOf(b) === i)
+    .sort((a, b) => a - b)
+  if (raw.length > 0) return raw
+  return [bandIndexFromParts(normalizeBandpass(fallbackBandpass), clampSpectralGroup(fallbackGroup))]
+}
+
+/** Banda “primaria” (la primera seleccionada) para compatibilidad con el backend. */
+export function primaryFromBands(bands: number[]): { bandpass: Bandpass; group: number; bandIndex: number } {
+  const band = partsFromBandIndex(normalizeBands(bands)[0])
+  return { bandpass: band.bandpass, group: band.groupId, bandIndex: band.bandIndex }
 }
 
 /** Canal (1–17) más cercano a una λ dentro de un detector. */

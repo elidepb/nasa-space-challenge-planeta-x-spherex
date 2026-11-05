@@ -42,6 +42,7 @@ const DEMO_QUERY: RegionQuery = {
   qr: 'qr2',
   bandpass: 'SPHEREx-D2',
   group: 7,
+  bands: [24],
 }
 
 type ModalName = 'intro' | 'guide' | 'help' | 'about' | null
@@ -503,6 +504,7 @@ export default function App() {
           showGrid={showGrid}
           featureLayers={images?.featureLayers}
           activeFeatureIds={activeFeatures}
+          crossfade={mode === 'original' || mode === 'difference'}
           hunterActive={hunterActive}
           hunterMarks={hunterMarks}
           onHunterMark={onHunterMark}
@@ -530,7 +532,11 @@ export default function App() {
             </div>
             <div>
               <span className="label">{t('obsInfo.channel')}</span>
-              {typeof displayed.metadata?.group === 'number' ? displayed.metadata.group : (lastQuery?.group ?? '—')}
+              {Array.isArray(displayed.metadata?.bands)
+                ? t('obsInfo.bandsCount', { n: (displayed.metadata.bands as number[]).length })
+                : typeof displayed.metadata?.group === 'number'
+                  ? displayed.metadata.group
+                  : (lastQuery?.group ?? '—')}
             </div>
             <div>
               <span className="label">{t('obsInfo.wavelength')}</span>

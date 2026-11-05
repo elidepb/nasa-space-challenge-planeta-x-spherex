@@ -3,17 +3,16 @@ import { API_MODE, setMockScenario, type MockScenario } from '../api'
 import type { MessageKey } from '../i18n'
 import { useI18n } from '../i18n/I18nProvider'
 import {
+  bandIndexFromParts,
   CHALLENGE_TARGETS,
-  clampSpectralGroup,
-  DEFAULT_BANDPASS,
-  DEFAULT_SPECTRAL_GROUP,
-  normalizeBandpass,
+  DEFAULT_BAND_INDEX,
+  normalizeBands,
+  primaryFromBands,
   SPECTRAL_FEATURES,
-  type Bandpass,
   type SpectralFeatureId,
 } from '../lib/spectral'
 import type { RegionQuery } from '../types/contracts'
-import { SpectralBandRuler } from './SpectralBandRuler'
+import { SpectralBandPicker } from './SpectralBandPicker'
 
 const DEMO_PRESETS: { label: MessageKey; query: RegionQuery }[] = [
   { label: 'search.presets.m101', query: { ra: 210.80227, dec: 54.34895, size: 0.05 } },
@@ -37,6 +36,10 @@ interface Props {
   onToggleFeature: (id: SpectralFeatureId) => void
 }
 
+function bandsFromQuery(q: RegionQuery): number[] {
+  return normalizeBands(q.bands, q.bandpass, q.group)
+}
+
 export function SearchPanel({
   busy,
   onSubmit,
@@ -50,8 +53,7 @@ export function SearchPanel({
   const [dec, setDec] = useState('54.34895')
   const [size, setSize] = useState('0.05')
   const [qr, setQr] = useState('qr2')
-  const [bandpass, setBandpass] = useState<Bandpass>(DEFAULT_BANDPASS)
-  const [group, setGroup] = useState(DEFAULT_SPECTRAL_GROUP)
+  const [bands, setBands] = useState<number[]>([DEFAULT_BAND_INDEX])
   const [scenario, setScenario] = useState<MockScenario>('normal')
   const [error, setError] = useState<FieldError | null>(null)
 
@@ -61,19 +63,21 @@ export function SearchPanel({
     setDec(String(externalQuery.dec))
     setSize(String(externalQuery.size))
     if (externalQuery.qr) setQr(externalQuery.qr)
-    if (externalQuery.bandpass) setBandpass(normalizeBandpass(externalQuery.bandpass))
-    if (externalQuery.group != null) setGroup(clampSpectralGroup(externalQuery.group))
+    setBands(bandsFromQuery(externalQuery))
   }, [externalQuery])
 
   function submit(e: FormEvent) {
     e.preventDefault()
+    const selected = normalizeBands(bands)
+    const primary = primaryFromBands(selected)
     const q: RegionQuery = {
       ra: Number(ra),
       dec: Number(dec),
       size: Number(size),
       qr,
-      bandpass,
-      group: clampSpectralGroup(group),
+      bandpass: primary.bandpass,
+      group: primary.group,
+      bands: selected,
     }
     if (!Number.isFinite(q.ra) || q.ra < 0 || q.ra >= 360) return setError('ra')
     if (!Number.isFinite(q.dec) || q.dec < -90 || q.dec > 90) return setError('dec')
@@ -86,16 +90,15 @@ export function SearchPanel({
     setRa(String(q.ra))
     setDec(String(q.dec))
     setSize(String(q.size))
-    if (q.bandpass) setBandpass(normalizeBandpass(q.bandpass))
-    if (q.group != null) setGroup(clampSpectralGroup(q.group))
+    setBands(bandsFromQuery(q))
   }
 
   function toggleFeature(id: SpectralFeatureId) {
     const feat = SPECTRAL_FEATURES.find((f) => f.id === id)
     const turningOn = !activeFeatures.includes(id)
     if (turningOn && feat) {
-      setBandpass(feat.bandpass)
-      setGroup(feat.group)
+      const idx = bandIndexFromParts(feat.bandpass, feat.group)
+      setBands((cur) => normalizeBands([...cur, idx]))
     }
     onToggleFeature(id)
   }
@@ -127,13 +130,7 @@ export function SearchPanel({
         </label>
       </div>
 
-      <SpectralBandRuler
-        bandpass={bandpass}
-        group={group}
-        disabled={busy}
-        onBandpassChange={setBandpass}
-        onGroupChange={setGroup}
-      />
+      <SpectralBandPicker selected={bands} disabled={busy} onChange={setBands} />
 
       <div className="feature-layers" role="group" aria-label={t('search.layersTitle')}>
         <div className="feature-layers-head">
