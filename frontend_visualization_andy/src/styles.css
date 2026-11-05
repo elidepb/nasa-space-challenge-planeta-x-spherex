@@ -1,9 +1,9 @@
 :root {
-  --bg: #070a12;
-  --bg-2: #0d1220;
-  --panel: #111829;
-  --panel-2: #172036;
-  --border: #22304d;
+  --bg: #000000;
+  --bg-2: #0a0a0f;
+  --panel: rgba(10, 12, 18, 0.88);
+  --panel-2: rgba(18, 22, 32, 0.92);
+  --border: #2a3348;
   --text: #e3e9f6;
   --muted: #8592ad;
   --accent: #4fa3ff;
@@ -25,7 +25,32 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: radial-gradient(ellipse at top, #101833 0%, var(--bg) 60%);
+  min-height: 100vh;
+  background-color: #000;
+  /* Cielo negro con estrellas (puntos blancos). */
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(1px 1px at 28% 42%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 45% 12%, #fff, transparent),
+    radial-gradient(1px 1px at 62% 58%, rgba(255, 255, 255, 0.85), transparent),
+    radial-gradient(1px 1px at 78% 24%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 88% 72%, #fff, transparent),
+    radial-gradient(1px 1px at 8% 78%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1px 1px at 35% 88%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 55% 35%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 70% 90%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 92% 40%, #fff, transparent),
+    radial-gradient(1px 1px at 18% 55%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1px 1px at 48% 68%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1px 1px at 82% 8%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 5% 32%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(2px 2px at 40% 5%, rgba(255, 255, 255, 0.95), transparent),
+    radial-gradient(1px 1px at 95% 55%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 22% 8%, rgba(200, 220, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 66% 48%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(255, 255, 255, 0.35), transparent);
+  background-size: 100% 100%;
+  background-attachment: fixed;
 }
 
 button,
@@ -64,6 +89,7 @@ h3 {
   height: 100vh;
   gap: 12px;
   padding: 12px;
+  background: transparent;
 }
 
 .topbar {
@@ -151,16 +177,21 @@ h3 {
   min-height: 0;
 }
 
-/* ---------- panels ---------- */
+/* ---------- panels (cristal / glass) ---------- */
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: rgba(12, 16, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius);
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .panel.grow {
   flex: 1;
@@ -299,6 +330,149 @@ h3 {
   pointer-events: none;
   mix-blend-mode: screen;
   image-rendering: pixelated;
+  z-index: 3;
+  opacity: 0.95;
+}
+.viewer-image.crossfade-in,
+.viewer-image.crossfade-out {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  image-rendering: pixelated;
+}
+.viewer-image.crossfade-out {
+  opacity: 1;
+  transition: opacity 0.45s ease;
+  z-index: 2;
+  pointer-events: none;
+}
+.viewer-image.crossfade-out.is-fading {
+  opacity: 0;
+}
+.viewer-image.crossfade-in {
+  z-index: 1;
+}
+
+/* ---------- 102-band multi picker (horizontal wrap) ---------- */
+.spectral-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(8, 12, 22, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.spectral-picker.disabled {
+  opacity: 0.65;
+  pointer-events: none;
+}
+.spectral-picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.spectral-picker-hint {
+  margin: 0;
+}
+.spectral-picker-filters,
+.spectral-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.spectral-picker-filters .chip.active,
+.spectral-picker-actions .chip.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(47, 127, 224, 0.28);
+}
+.spectral-spectrum {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.spectral-spectrum-bar {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    90deg,
+    #6ec8ff 0%,
+    #7a8cff 16%,
+    #c45c9a 40%,
+    #e07a3a 66%,
+    #f0c35c 84%,
+    #fff3c4 100%
+  );
+}
+.spectral-spectrum-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+}
+.spectral-band-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.spectral-band-pill {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(13, 18, 32, 0.7);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  line-height: 1;
+}
+.spectral-band-pill.det-1 { border-color: rgba(110, 200, 255, 0.35); }
+.spectral-band-pill.det-2 { border-color: rgba(122, 140, 255, 0.35); }
+.spectral-band-pill.det-3 { border-color: rgba(196, 92, 154, 0.35); }
+.spectral-band-pill.det-4 { border-color: rgba(224, 122, 58, 0.4); }
+.spectral-band-pill.det-5 { border-color: rgba(240, 195, 92, 0.4); }
+.spectral-band-pill.det-6 { border-color: rgba(255, 243, 196, 0.35); }
+.spectral-band-pill:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.spectral-band-pill.active {
+  color: #fff;
+  font-weight: 700;
+  border-color: var(--accent);
+  background: rgba(47, 127, 224, 0.45);
+  box-shadow: 0 0 0 1px rgba(79, 163, 255, 0.35);
+}
+.spectral-band-pill.active.primary {
+  background: linear-gradient(135deg, rgba(47, 127, 224, 0.7), rgba(106, 92, 240, 0.55));
+}
+.spectral-selected-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.spectral-selected-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 72px;
+  overflow-y: auto;
+}
+.spectral-selected-chip {
+  font-size: 11px;
 }
 .form-error {
   margin: 0;
@@ -540,6 +714,12 @@ h3 {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 14px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 16, 28, 0.45);
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
 }
 .segmented {
   display: inline-flex;
@@ -563,15 +743,83 @@ h3 {
 }
 .toggles {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   font-size: 13px;
   color: var(--muted);
 }
 .toggles label {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
+  gap: 8px;
   align-items: center;
   cursor: pointer;
+  user-select: none;
+  padding: 4px 8px 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.toggles label:hover {
+  border-color: rgba(79, 163, 255, 0.45);
+  color: var(--text);
+}
+.toggles label:has(input:checked) {
+  border-color: rgba(79, 163, 255, 0.55);
+  background: rgba(79, 163, 255, 0.16);
+  color: var(--text);
+}
+.toggles label:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.toggles input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.toggles input[type='checkbox']::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  transition: transform 0.12s ease-in-out;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+  background: #fff;
+}
+.toggles input[type='checkbox']:checked {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, #2f7fe0, #6a5cf0);
+  box-shadow: 0 0 10px rgba(79, 163, 255, 0.45);
+}
+.toggles input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+.toggles input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.feature-toggle.feature-hydrogen:has(input:checked) {
+  border-color: rgba(80, 220, 255, 0.65);
+  background: rgba(80, 220, 255, 0.14);
+}
+.feature-toggle.feature-gases:has(input:checked) {
+  border-color: rgba(120, 255, 140, 0.65);
+  background: rgba(120, 255, 140, 0.12);
+}
+.feature-toggle.feature-dust:has(input:checked) {
+  border-color: rgba(255, 170, 70, 0.7);
+  background: rgba(255, 170, 70, 0.14);
 }
 
 /* ---------- viewer ---------- */
@@ -621,6 +869,7 @@ h3 {
   width: 100%;
   height: 100%;
   overflow: visible;
+  z-index: 4;
 }
 .viewer-badge {
   position: absolute;
@@ -768,11 +1017,13 @@ h3 {
   display: grid;
   grid-template-columns: 1.6fr 0.6fr 1.4fr 0.8fr 1fr;
   gap: 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: rgba(12, 16, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius);
   padding: 10px 14px;
   font-size: 13px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .label {
   display: block;
@@ -785,13 +1036,15 @@ h3 {
 
 /* ---------- playback ---------- */
 .playback {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: rgba(12, 16, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius);
   padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .controls {
   display: flex;

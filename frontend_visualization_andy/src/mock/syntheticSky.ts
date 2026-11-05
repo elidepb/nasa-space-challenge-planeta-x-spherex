@@ -13,12 +13,11 @@ import type {
 import { pixelToSky } from '../lib/sky'
 import {
   approximateBandwidth,
-  clampSpectralGroup,
-  DEFAULT_BANDPASS,
-  DEFAULT_SPECTRAL_GROUP,
   detectorNumber,
   getSpectralBin,
-  normalizeBandpass,
+  normalizeBands,
+  partsFromBandIndex,
+  primaryFromBands,
   SPECTRAL_FEATURES,
 } from '../lib/spectral'
 import type { FeatureLayerImage } from '../types/contracts'
@@ -79,14 +78,14 @@ function gaussian(rand: () => number) {
 }
 
 function seedFromRegion(q: RegionQuery) {
-  const band = normalizeBandpass(q.bandpass)
-  const group = clampSpectralGroup(q.group)
+  const bands = normalizeBands(q.bands, q.bandpass, q.group)
+  const bandsKey = bands.reduce((acc, b, i) => acc + b * (i + 1) * 13, 0)
   return (
     Math.floor(q.ra * 1000) * 31 +
     Math.floor((q.dec + 90) * 1000) * 17 +
     Math.floor(q.size * 1e4) +
-    detectorNumber(band) * 1009 +
-    group * 97
+    bandsKey +
+    bands.length * 1009
   )
 }
 
@@ -119,7 +118,7 @@ function addGalaxy(img: Float32Array, cx: number, cy: number, flux: number) {
 function renderFeatureOverlay(
   weight: Float32Array,
   color: [number, number, number],
-  opacityMax = 0.55,
+  opacityMax = 0.82,
 ): string {
   const canvas = document.createElement('canvas')
   canvas.width = NPIX
@@ -143,13 +142,13 @@ function buildFeatureLayers(rand: () => number, galaxy: { x: number; y: number }
   return SPECTRAL_FEATURES.map((feat) => {
     const map = new Float32Array(NPIX * NPIX)
     if (feat.id === 'dust') {
-      // Nube extendida alrededor de la galaxia sintética.
+      // Nube extendida alrededor de la galaxia sintética (bien visible).
       for (let j = 0; j < NPIX; j++) {
         for (let i = 0; i < NPIX; i++) {
-          const dx = (i - galaxy.x) / 14
-          const dy = (j - galaxy.y) / 10
+          const dx = (i - galaxy.x) / 11
+          const dy = (j - galaxy.y) / 8
           const r2 = dx * dx + dy * dy
-          map[j * NPIX + i] = Math.exp(-r2) * (0.7 + 0.3 * Math.sin(i * 0.2 + j * 0.15))
+          map[j * NPIX + i] = Math.exp(-r2) * (1.2 + 0.4 * Math.sin(i * 0.2 + j * 0.15))
         }
       }
     } else if (feat.id === 'gases') {
@@ -158,22 +157,23 @@ function buildFeatureLayers(rand: () => number, galaxy: { x: number; y: number }
         for (let i = 0; i < NPIX; i++) {
           const phase = Math.sin((i + j * 0.4) * 0.35) * 8
           const d = Math.abs(j - (NPIX * 0.45 + phase))
-          map[j * NPIX + i] = Math.exp(-(d * d) / 18) + 0.15 * Math.exp(-((i - NPIX * 0.7) ** 2) / 40)
+          map[j * NPIX + i] =
+            1.4 * Math.exp(-(d * d) / 14) + 0.35 * Math.exp(-((i - NPIX * 0.7) ** 2) / 32)
         }
       }
     } else {
       // Hidrógeno: nudos compactos de emisión.
       const knots = [
-        { x: 18 + rand() * 8, y: 22 + rand() * 8, s: 2.2 },
-        { x: 40 + rand() * 10, y: 38 + rand() * 8, s: 1.8 },
-        { x: 28 + rand() * 6, y: 48 + rand() * 6, s: 1.5 },
+        { x: 18 + rand() * 8, y: 22 + rand() * 8, s: 2.8 },
+        { x: 40 + rand() * 10, y: 38 + rand() * 8, s: 2.4 },
+        { x: 28 + rand() * 6, y: 48 + rand() * 6, s: 2.0 },
       ]
       for (const k of knots) {
         for (let j = 0; j < NPIX; j++) {
           for (let i = 0; i < NPIX; i++) {
             const dx = i - k.x
             const dy = j - k.y
-            map[j * NPIX + i] += Math.exp(-(dx * dx + dy * dy) / (2 * k.s * k.s))
+            map[j * NPIX + i] += 1.5 * Math.exp(-(dx * dx + dy * dy) / (2 * k.s * k.s))
           }
         }
       }
@@ -269,10 +269,18 @@ export function generateSyntheticDataset(q: RegionQuery): SyntheticDataset {
       : [Math.round(12 + 30 * a), Math.round(12 + 190 * a), Math.round(18 + 237 * a)]
   }
 
-  const bandpass = normalizeBandpass(q.bandpass ?? DEFAULT_BANDPASS)
-  const group = clampSpectralGroup(q.group ?? DEFAULT_SPECTRAL_GROUP)
+  const bands = normalizeBands(q.bands, q.bandpass, q.group)
+  const primary = primaryFromBands(bands)
+  const bandpass = primary.bandpass
+  const group = primary.group
   const bin = getSpectralBin(bandpass, group)
-  const bandwidth = approximateBandwidth(bandpass)
+  const selectedBins = bands.map((i) => partsFromBandIndex(i))
+  const wlMin = Math.min(...selectedBins.map((b) => b.wlMin))
+  const wlMax = Math.max(...selectedBins.map((b) => b.wlMax))
+  const wlCenter =
+    selectedBins.reduce((acc, b) => acc + b.wlCenter, 0) / selectedBins.length
+  const bandwidth =
+    bands.length > 1 ? +(wlMax - wlMin).toFixed(6) : approximateBandwidth(bandpass)
   const detector = detectorNumber(bandpass)
 
   const observations: ObservationSummary[] = EPOCH_TIMESTAMPS.map((timestamp, e) => ({
@@ -281,7 +289,7 @@ export function generateSyntheticDataset(q: RegionQuery): SyntheticDataset {
     ra: q.ra,
     dec: q.dec,
     detector,
-    wavelength: bin.wlCenter + (rand() - 0.5) * bandwidth * 0.08,
+    wavelength: bands.length > 1 ? wlCenter : bin.wlCenter + (rand() - 0.5) * bandwidth * 0.08,
     bandwidth,
     wavelength_source: 'WCS-WAVE',
     bandwidth_source: 'WCS-WAVE',
@@ -291,7 +299,14 @@ export function generateSyntheticDataset(q: RegionQuery): SyntheticDataset {
     fits_source: `mock://spherex/${q.qr ?? 'qr2'}/${bandpass}/g${String(group).padStart(2, '0')}/epoch_${String(e + 1).padStart(3, '0')}.fits`,
     shape: [NPIX, NPIX],
     n_invalid_pixels: epochs[e].reduce((acc, v) => acc + (Number.isNaN(v) ? 1 : 0), 0),
-    metadata: { qr: q.qr ?? 'qr2', bandpass, group, source: 'mock' },
+    metadata: {
+      qr: q.qr ?? 'qr2',
+      bandpass,
+      group,
+      bands,
+      bandCount: bands.length,
+      source: 'mock',
+    },
   }))
 
   const refIndex = 0

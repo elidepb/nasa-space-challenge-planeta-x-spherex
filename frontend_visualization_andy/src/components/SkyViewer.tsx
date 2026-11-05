@@ -32,12 +32,16 @@ interface Props {
   /** Capas espectrales activas (polvo / gases / H). */
   featureLayers?: FeatureLayerImage[]
   activeFeatureIds?: string[]
+  /** Crossfade al cambiar de época (desactivado en blink/swipe). */
+  crossfade?: boolean
   hunterActive: boolean
   hunterMarks: HunterMark[]
   onHunterMark: (x: number, y: number) => void
   badge?: ReactNode
   placeholder?: ReactNode
 }
+
+const CROSSFADE_MS = 450
 
 interface View {
   k: number
@@ -61,12 +65,52 @@ export function SkyViewer(props: Props) {
   const [pin, setPin] = useState<{ x: number; y: number } | null>(null)
   const [split, setSplit] = useState(0.5)
   const [copied, setCopied] = useState(false)
+  const [shownUrl, setShownUrl] = useState<string | null>(imageUrl)
+  const [outgoingUrl, setOutgoingUrl] = useState<string | null>(null)
+  const [fadeOut, setFadeOut] = useState(false)
+  const shownRef = useRef<string | null>(imageUrl)
   const drag = useRef<{ px: number; py: number; vx: number; vy: number; moved: boolean } | null>(null)
   const splitDrag = useRef(false)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null)
+  const reduceMotion = useRef(
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  )
 
   const hasImage = imageUrl !== null
+
+  useEffect(() => {
+    if (!imageUrl) {
+      shownRef.current = null
+      setShownUrl(null)
+      setOutgoingUrl(null)
+      setFadeOut(false)
+      return
+    }
+    if (imageUrl === shownRef.current) return
+    const previous = shownRef.current
+    const canFade = Boolean(props.crossfade && !compareUrl && !reduceMotion.current && previous)
+    shownRef.current = imageUrl
+    if (!canFade) {
+      setShownUrl(imageUrl)
+      setOutgoingUrl(null)
+      setFadeOut(false)
+      return
+    }
+    setOutgoingUrl(previous)
+    setShownUrl(imageUrl)
+    setFadeOut(false)
+    const start = window.requestAnimationFrame(() => setFadeOut(true))
+    const done = window.setTimeout(() => {
+      setOutgoingUrl(null)
+      setFadeOut(false)
+    }, CROSSFADE_MS)
+    return () => {
+      window.cancelAnimationFrame(start)
+      window.clearTimeout(done)
+    }
+  }, [imageUrl, compareUrl, props.crossfade])
+
   useEffect(() => {
     const el = stageRef.current
     if (!el) return
@@ -218,7 +262,24 @@ export function SkyViewer(props: Props) {
         onDoubleClick={() => setView(IDENTITY)}
       >
         <div className="viewer-content" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-          <img src={imageUrl} alt={t('viewer.alt')} draggable={false} className="viewer-image" style={{ filter: props.imageFilter }} />
+          {shownUrl && (
+            <img
+              src={shownUrl}
+              alt={t('viewer.alt')}
+              draggable={false}
+              className="viewer-image crossfade-in"
+              style={{ filter: props.imageFilter }}
+            />
+          )}
+          {outgoingUrl && (
+            <img
+              src={outgoingUrl}
+              alt=""
+              draggable={false}
+              className={`viewer-image crossfade-out ${fadeOut ? 'is-fading' : ''}`}
+              style={{ filter: props.imageFilter }}
+            />
+          )}
           {compareUrl && (
             <img
               src={compareUrl}
