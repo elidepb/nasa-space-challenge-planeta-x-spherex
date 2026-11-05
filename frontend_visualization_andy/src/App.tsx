@@ -25,6 +25,7 @@ import {
   type ImageSettings,
 } from './lib/imageProcessing'
 import { formatTimestamp } from './lib/sky'
+import { SPECTRAL_FEATURES, type SpectralFeatureId } from './lib/spectral'
 import { readUrlState, VIEW_MODES, writeUrlState, type UrlState, type ViewMode } from './lib/urlState'
 import type { KnownObject, RegionQuery } from './types/contracts'
 
@@ -34,7 +35,14 @@ const SPEEDS = [
   { label: '2×', stepMs: 400, blinkMs: 250 },
 ]
 const INTRO_KEY = 'spherex.introSeen'
-const DEMO_QUERY: RegionQuery = { ra: 210.80227, dec: 54.34895, size: 0.05, qr: 'qr2', bandpass: 'SPHEREx-D2' }
+const DEMO_QUERY: RegionQuery = {
+  ra: 210.80227,
+  dec: 54.34895,
+  size: 0.05,
+  qr: 'qr2',
+  bandpass: 'SPHEREx-D2',
+  group: 7,
+}
 
 type ModalName = 'intro' | 'guide' | 'help' | 'about' | null
 
@@ -74,6 +82,7 @@ export default function App() {
   const [showTrajectories, setShowTrajectories] = useState(true)
   const [showKnown, setShowKnown] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
+  const [activeFeatures, setActiveFeatures] = useState<SpectralFeatureId[]>([])
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_IMAGE_SETTINGS)
   const [hunterActive, setHunterActive] = useState(false)
   const [hunterMarks, setHunterMarks] = useState<HunterMark[]>([])
@@ -388,7 +397,18 @@ export default function App() {
       </header>
 
       <aside className="sidebar left">
-        <SearchPanel busy={busy} onSubmit={runSearch} externalQuery={externalQuery} />
+        <SearchPanel
+          busy={busy}
+          onSubmit={runSearch}
+          externalQuery={externalQuery}
+          activeFeatures={activeFeatures}
+          layersAvailable={Boolean(images?.featureLayers?.length)}
+          onToggleFeature={(id) => {
+            const turningOn = !activeFeatures.includes(id)
+            setActiveFeatures((cur) => (turningOn ? [...cur, id] : cur.filter((x) => x !== id)))
+            if (turningOn) showToast(t(`search.features.${id}On`))
+          }}
+        />
         <ObservationList
           observations={observations}
           activeIndex={activeIndex}
@@ -423,6 +443,28 @@ export default function App() {
               <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
               {t('toolbar.grid')}
             </label>
+          </div>
+          <div className="toggles feature-toggles" title={t('toolbar.layersHint')}>
+            <span className="toggles-label">{t('toolbar.layers')}</span>
+            {SPECTRAL_FEATURES.map((f) => {
+              const on = activeFeatures.includes(f.id)
+              const available = images?.featureLayers?.some((l) => l.id === f.id)
+              return (
+                <label key={f.id} className={`feature-toggle feature-${f.id} ${!available ? 'unavailable' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!available}
+                    onChange={(e) =>
+                      setActiveFeatures((cur) =>
+                        e.target.checked ? [...cur, f.id] : cur.filter((id) => id !== f.id),
+                      )
+                    }
+                  />
+                  {t(`search.features.${f.id}`)}
+                </label>
+              )
+            })}
           </div>
           <div className="tools">
             <ImageControls settings={imageSettings} onChange={setImageSettings} colorApplicable={view?.colorApplicable ?? true} />
@@ -459,6 +501,8 @@ export default function App() {
           showTrajectories={showTrajectories}
           showKnown={showKnown}
           showGrid={showGrid}
+          featureLayers={images?.featureLayers}
+          activeFeatureIds={activeFeatures}
           hunterActive={hunterActive}
           hunterMarks={hunterMarks}
           onHunterMark={onHunterMark}
@@ -483,6 +527,10 @@ export default function App() {
             <div>
               <span className="label">{t('obsInfo.detector')}</span>
               {displayed.detector}
+            </div>
+            <div>
+              <span className="label">{t('obsInfo.channel')}</span>
+              {typeof displayed.metadata?.group === 'number' ? displayed.metadata.group : (lastQuery?.group ?? '—')}
             </div>
             <div>
               <span className="label">{t('obsInfo.wavelength')}</span>

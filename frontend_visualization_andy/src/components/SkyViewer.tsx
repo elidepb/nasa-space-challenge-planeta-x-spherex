@@ -8,7 +8,7 @@ import {
 import { useI18n } from '../i18n/I18nProvider'
 import type { HunterMark } from '../lib/hunter'
 import { formatDecDms, formatRaHms, pixelToSky } from '../lib/sky'
-import type { Candidate, KnownObject, RegionQuery } from '../types/contracts'
+import type { Candidate, FeatureLayerImage, KnownObject, RegionQuery } from '../types/contracts'
 
 interface Props {
   imageUrl: string | null
@@ -29,6 +29,9 @@ interface Props {
   showTrajectories: boolean
   showKnown: boolean
   showGrid: boolean
+  /** Capas espectrales activas (polvo / gases / H). */
+  featureLayers?: FeatureLayerImage[]
+  activeFeatureIds?: string[]
   hunterActive: boolean
   hunterMarks: HunterMark[]
   onHunterMark: (x: number, y: number) => void
@@ -225,6 +228,17 @@ export function SkyViewer(props: Props) {
               style={{ filter: props.imageFilter, clipPath: `inset(0 ${Math.max(0, 100 - splitContent)}% 0 0)` }}
             />
           )}
+          {(props.featureLayers ?? [])
+            .filter((layer) => props.activeFeatureIds?.includes(layer.id))
+            .map((layer) => (
+              <img
+                key={layer.id}
+                src={layer.url}
+                alt=""
+                draggable={false}
+                className={`viewer-image feature-layer feature-${layer.id}`}
+              />
+            ))}
           <svg className="viewer-overlay" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
             {props.showGrid && props.region && (
               <Grid
