@@ -30,9 +30,9 @@ import { readUrlState, VIEW_MODES, writeUrlState, type UrlState, type ViewMode }
 import type { KnownObject, RegionQuery } from './types/contracts'
 
 const SPEEDS = [
-  { label: '0.5×', stepMs: 1600, blinkMs: 1000 },
-  { label: '1×', stepMs: 800, blinkMs: 500 },
-  { label: '2×', stepMs: 400, blinkMs: 250 },
+  { label: '0.5×', stepMs: 2200, blinkMs: 1000 },
+  { label: '1×', stepMs: 1400, blinkMs: 500 },
+  { label: '2×', stepMs: 900, blinkMs: 250 },
 ]
 const INTRO_KEY = 'spherex.introSeen'
 const DEMO_QUERY: RegionQuery = {
