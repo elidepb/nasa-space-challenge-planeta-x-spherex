@@ -1,4 +1,10 @@
 import type { RegionQuery } from '../types/contracts'
+import {
+  clampSpectralGroup,
+  DEFAULT_BANDPASS,
+  DEFAULT_SPECTRAL_GROUP,
+  normalizeBandpass,
+} from './spectral'
 
 export type ViewMode = 'original' | 'blink' | 'difference' | 'swipe'
 export const VIEW_MODES: ViewMode[] = ['original', 'blink', 'difference', 'swipe']
@@ -20,6 +26,7 @@ export function readUrlState(): UrlState {
   const ra = num('ra')
   const dec = num('dec')
   const size = num('size')
+  const groupRaw = num('group')
   const query =
     Number.isFinite(ra) && Number.isFinite(dec)
       ? {
@@ -27,7 +34,8 @@ export function readUrlState(): UrlState {
           dec,
           size: Number.isFinite(size) ? size : 0.05,
           qr: p.get('qr') ?? 'qr2',
-          bandpass: p.get('band') ?? 'SPHEREx-D2',
+          bandpass: normalizeBandpass(p.get('band') ?? DEFAULT_BANDPASS),
+          group: Number.isFinite(groupRaw) ? clampSpectralGroup(groupRaw) : DEFAULT_SPECTRAL_GROUP,
         }
       : null
   const mode = p.get('mode') as ViewMode | null
@@ -48,6 +56,7 @@ export function writeUrlState(state: UrlState) {
     p.set('size', String(state.query.size))
     if (state.query.qr) p.set('qr', state.query.qr)
     if (state.query.bandpass) p.set('band', state.query.bandpass)
+    if (state.query.group != null) p.set('group', String(clampSpectralGroup(state.query.group)))
   }
   if (state.mode && state.mode !== 'original') p.set('mode', state.mode)
   if (state.epoch !== undefined) p.set('epoch', String(state.epoch + 1))

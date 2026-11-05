@@ -13,7 +13,13 @@ export interface RegionQuery {
   /** Lado del cutout en grados (igual que `size` en get_observations). */
   size: number
   qr?: string
+  /** Detector SPHEREx: SPHEREx-D1 … SPHEREx-D6. */
   bandpass?: string
+  /**
+   * Canal espectral 1–17 dentro del detector (mismo `group` que
+   * `get_observations(..., group=)` de Elide). Default del pipeline: 7.
+   */
+  group?: number
 }
 
 export interface ObservationSummary {
@@ -95,6 +101,18 @@ export interface DifferenceImage {
   url: string
 }
 
+/** Capa espectral opcional (polvo, gases, H…) para superponer en el visor. */
+export interface FeatureLayerImage {
+  id: string
+  url: string
+  /** Color de acento RGB (para leyenda). */
+  color: [number, number, number]
+  /** Detector / canal sugerido donde la feature destaca. */
+  bandpass?: string
+  group?: number
+  wavelengthUm?: number
+}
+
 export interface AnalysisImages {
   /** Tamaño de la cuadrícula común (reproyectada) en píxeles. */
   width: number
@@ -102,6 +120,8 @@ export interface AnalysisImages {
   pixelScaleArcsec: number
   epochs: EpochImage[]
   differences: DifferenceImage[]
+  /** Capas científicas opcionales (mock o backend). */
+  featureLayers?: FeatureLayerImage[]
 }
 
 export interface AnalysisResult {
