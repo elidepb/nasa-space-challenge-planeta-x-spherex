@@ -22,7 +22,7 @@ from spherex_pipeline.constants import (
     DEFAULT_SPECTRAL_GROUP,
     REMOTE_TIMEOUT_S,
 )
-from spherex_pipeline.cutouts import cutout_region, homogenize_shapes
+from spherex_pipeline.cutouts import harmonize_to_region
 from spherex_pipeline.demo import load_demo_observations
 from spherex_pipeline.fits_reader import observation_from_fits
 from spherex_pipeline.irsa import (
@@ -94,11 +94,8 @@ def _apply_mask(observation: Observation) -> Observation:
 
 def _prepare(observations: list[Observation], ra: float, dec: float, size: float) -> list[Observation]:
     prepared: list[Observation] = []
-    for observation in observations:
-        observation = cutout_region(observation, ra, dec, size)
-        observation = _apply_mask(observation)
-        prepared.append(observation)
-    prepared = homogenize_shapes(prepared)
+    for observation in harmonize_to_region(observations, ra, dec, size):
+        prepared.append(_apply_mask(observation))
     prepared.sort(key=lambda item: item.timestamp)
     return prepared
 
@@ -365,7 +362,7 @@ def run_pipeline(
             time_start=time_start,
             time_end=time_end,
         )
-        prepared = observations
+        prepared = _prepare(observations, ra, dec, size)
     report.observations = len(prepared)
     result = PipelineResult(observations=prepared, report=report, query=query)
     LAST_RESULT = result
