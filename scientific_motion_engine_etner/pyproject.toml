@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spherex-motion-engine"
+version = "0.1.0"
+description = "Motor científico SPHEREx: consume Observation de Elide y detecta movimiento."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "astropy>=6.0",
+    "reproject>=0.13",
+    "matplotlib>=3.8",
+    "spherex-pipeline @ file:../spherex_data_pipeline_elide",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+spherex-motion = "astro_pipeline.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["astro_pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

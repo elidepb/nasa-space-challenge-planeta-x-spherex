@@ -33,6 +33,7 @@ from typing import Any
 
 from astropy.io import fits
 from astropy.time import Time
+from astropy.wcs import WCS
 from astropy.visualization import AsinhStretch, ZScaleInterval
 import matplotlib
 
@@ -186,9 +187,20 @@ def observation_from_fits_fast(
             else None
         )
 
-        hdr = hdul[0].header
-        wl_val = extra_metadata.get("wavelength", hdr.get("CRVAL1W", hdr.get("CRVAL3", 0.0)))
-        det_num = extra_metadata.get("detector", hdr.get("DETECTOR", 2))
+        img_hdu = hdul["IMAGE"] if "IMAGE" in hdul else hdul[1]
+        hdr = img_hdu.header
+        primary_hdr = hdul[0].header
+        wl_val = extra_metadata.get(
+            "wavelength",
+            hdr.get("CRVAL1W", hdr.get("CRVAL3", primary_hdr.get("CRVAL1W", 0.0))),
+        )
+        det_num = extra_metadata.get("detector", hdr.get("DETECTOR", primary_hdr.get("DETECTOR", 2)))
+        zodi_data = (
+            hdul["ZODI"].data.astype(np.float32)
+            if "ZODI" in hdul and hdul["ZODI"].data is not None
+            else None
+        )
+        wcs_header = _wcs_header_from_fits(hdr)
 
     if timestamp_mjd is not None:
         timestamp = Time(float(timestamp_mjd), format="mjd").isot
@@ -211,9 +223,21 @@ def observation_from_fits_fast(
         image=img_data,
         flags=flags_data,
         variance=var_data,
+        zodi=zodi_data,
         valid_mask=np.ones_like(img_data, dtype=bool) if img_data is not None else None,
+        wcs_header=wcs_header,
         metadata=extra_metadata,
     )
+
+
+def _wcs_header_from_fits(header: fits.Header) -> dict[str, Any] | None:
+    try:
+        wcs = WCS(header, naxis=2, relax=True)
+        if wcs.naxis < 2:
+            return None
+        return dict(wcs.to_header(relax=True))
+    except Exception:
+        return None
 
 
 def calculate_observations_size_mb(observations: list[Observation]) -> tuple[float, int]:
