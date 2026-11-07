@@ -1,0 +1,356 @@
+{
+  "size_deg": 0.05,
+  "defaults": "Elide get_observations: qr2, SPHEREx-D2, method=spectral, group=7",
+  "targets": [
+    {
+      "name": "WISE 0855",
+      "ra": 133.795129,
+      "dec": -7.245147,
+      "why": "enana marr\u00f3n de movimiento propio alto (primer test del enunciado)",
+      "query": {
+        "size": 0.05,
+        "qr": "qr2",
+        "bandpass": "SPHEREx-D2",
+        "method": "spectral",
+        "group": 7,
+        "source": "irsa"
+      },
+      "ok": true,
+      "n_observations": 2,
+      "epochs": [
+        {
+          "id": "obs_1",
+          "timestamp": "2025-11-07T18:53:40.906",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 814,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_2",
+          "timestamp": "2026-05-02T09:40:21.274",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 821,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        }
+      ],
+      "n_comparable_groups": 1,
+      "n_candidates": 0,
+      "candidates": [],
+      "error": null
+    },
+    {
+      "name": "Barnard's Star",
+      "ra": 269.452076,
+      "dec": 4.693391,
+      "why": "estrella con el mayor movimiento propio conocido",
+      "query": {
+        "size": 0.05,
+        "qr": "qr2",
+        "bandpass": "SPHEREx-D2",
+        "method": "spectral",
+        "group": 7,
+        "source": "irsa"
+      },
+      "ok": true,
+      "n_observations": 2,
+      "epochs": [
+        {
+          "id": "obs_1",
+          "timestamp": "2025-08-25T17:12:40.118",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 837,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_2",
+          "timestamp": "2026-03-15T02:29:49.056",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 822,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        }
+      ],
+      "n_comparable_groups": 1,
+      "n_candidates": 0,
+      "candidates": [],
+      "error": null
+    },
+    {
+      "name": "Epsilon Indi B",
+      "ra": 331.043833,
+      "dec": -56.782694,
+      "why": "par de enanas marrones alrededor de Epsilon Indi",
+      "query": {
+        "size": 0.05,
+        "qr": "qr2",
+        "bandpass": "SPHEREx-D2",
+        "method": "spectral",
+        "group": 7,
+        "source": "irsa"
+      },
+      "ok": true,
+      "n_observations": 4,
+      "epochs": [
+        {
+          "id": "obs_1",
+          "timestamp": "2025-04-26T19:47:53.347",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            64,
+            64
+          ],
+          "n_valid_pixels": 831,
+          "n_pixels": 4096,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_2",
+          "timestamp": "2025-04-27T16:54:30.355200",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            64,
+            64
+          ],
+          "n_valid_pixels": 4096,
+          "n_pixels": 4096,
+          "has_wcs": false,
+          "has_zodi": false,
+          "has_variance": true
+        },
+        {
+          "id": "obs_3",
+          "timestamp": "2025-10-02T23:15:35.683200",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            64,
+            64
+          ],
+          "n_valid_pixels": 4096,
+          "n_pixels": 4096,
+          "has_wcs": false,
+          "has_zodi": false,
+          "has_variance": true
+        },
+        {
+          "id": "obs_4",
+          "timestamp": "2025-10-03T18:49:21.100800",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            64,
+            64
+          ],
+          "n_valid_pixels": 4096,
+          "n_pixels": 4096,
+          "has_wcs": false,
+          "has_zodi": false,
+          "has_variance": true
+        }
+      ],
+      "n_comparable_groups": 0,
+      "n_candidates": 0,
+      "candidates": [],
+      "error": null
+    },
+    {
+      "name": "RW Aurigae",
+      "ra": 76.956417,
+      "dec": 30.401408,
+      "why": "estrella variable (cambio de brillo, no de posici\u00f3n)",
+      "query": {
+        "size": 0.05,
+        "qr": "qr2",
+        "bandpass": "SPHEREx-D2",
+        "method": "spectral",
+        "group": 7,
+        "source": "irsa"
+      },
+      "ok": true,
+      "n_observations": 2,
+      "epochs": [
+        {
+          "id": "obs_1",
+          "timestamp": "2025-09-08T13:15:54.403",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 832,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_2",
+          "timestamp": "2026-03-02T10:21:53.309",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 832,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        }
+      ],
+      "n_comparable_groups": 1,
+      "n_candidates": 0,
+      "candidates": [],
+      "error": null
+    },
+    {
+      "name": "R Draconis",
+      "ra": 248.167625,
+      "dec": 66.754444,
+      "why": "estrella variable (cambio de brillo, no de posici\u00f3n)",
+      "query": {
+        "size": 0.05,
+        "qr": "qr2",
+        "bandpass": "SPHEREx-D2",
+        "method": "spectral",
+        "group": 7,
+        "source": "irsa"
+      },
+      "ok": true,
+      "n_observations": 5,
+      "epochs": [
+        {
+          "id": "obs_1",
+          "timestamp": "2025-06-15T10:42:02.822",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 737,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_2",
+          "timestamp": "2025-06-15T10:44:11.731",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 726,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_3",
+          "timestamp": "2025-12-02T05:53:44.678",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 768,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_4",
+          "timestamp": "2025-12-02T05:55:53.587",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 743,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        },
+        {
+          "id": "obs_5",
+          "timestamp": "2026-06-21T14:56:45.686",
+          "wavelength": 1.305176,
+          "bandwidth": null,
+          "detector": 2,
+          "shape": [
+            30,
+            30
+          ],
+          "n_valid_pixels": 713,
+          "n_pixels": 900,
+          "has_wcs": true,
+          "has_zodi": true,
+          "has_variance": true
+        }
+      ],
+      "n_comparable_groups": 1,
+      "n_candidates": 0,
+      "candidates": [],
+      "error": null
+    }
+  ]
+}
