@@ -27,6 +27,21 @@ def target_npix(wcs: WCS, size_deg: float) -> int:
     return max(8, int(np.ceil(size_deg / scale)))
 
 
+def shared_target_npix(observations: list[Observation], size_deg: float) -> int:
+    """Un solo npix para todas las épocas, para que el blink no mezcle tamaños."""
+    scales = []
+    for observation in observations:
+        wcs = observation.wcs()
+        if wcs is None:
+            continue
+        scale = _pixel_scale_deg(wcs)
+        if scale > 0:
+            scales.append(scale)
+    if not scales:
+        return max(8, int(np.ceil(size_deg / (6.15 / 3600.0))))
+    return max(8, int(np.ceil(size_deg / float(np.median(scales)))))
+
+
 def _cut_array(array: np.ndarray | None, cutout: Cutout2D, fill) -> np.ndarray | None:
     if array is None:
         return None
@@ -41,13 +56,20 @@ def cutout_region(
     ra: float,
     dec: float,
     size_deg: float,
+    npix: int | None = None,
 ) -> Observation:
-    """Recorta la observación a la región pedida usando WCS."""
+    """Recorta la observación a un cuadrado de `npix` centrado en (ra, dec).
+
+    Los FITS SPHEREx de distintas visitas no tienen el mismo NAXIS: el recorte
+    IBE es la intersección del cono con el detector. Sin este paso el visor
+    no puede comparar épocas (tamaños distintos / franja negra).
+    """
     wcs = observation.wcs()
     if wcs is None or observation.image is None:
+        LOGGER.warning("Cutout omitido para %s: falta WCS o image", observation.id)
         return observation
 
-    npix = target_npix(wcs, size_deg)
+    npix = int(npix) if npix is not None else target_npix(wcs, size_deg)
     position = SkyCoord(ra=ra, dec=dec, unit="deg", frame="icrs")
     try:
         image_cut = Cutout2D(
@@ -59,7 +81,7 @@ def cutout_region(
             fill_value=np.nan,
         )
     except Exception as exc:  # noqa: BLE001
-        LOGGER.debug("Cutout2D no aplicable a %s: %s", observation.id, exc)
+        LOGGER.warning("Cutout2D no aplicable a %s: %s", observation.id, exc)
         return observation
 
     observation.image = np.array(image_cut.data, dtype=float)
@@ -67,12 +89,27 @@ def cutout_region(
     observation.flags = _cut_array(observation.flags, image_cut, fill=0)
     observation.variance = _cut_array(observation.variance, image_cut, fill=np.nan)
     observation.zodi = _cut_array(observation.zodi, image_cut, fill=np.nan)
+    observation.valid_mask = _cut_array(observation.valid_mask, image_cut, fill=False)
     observation.wcs_header = dict(image_cut.wcs.to_header(relax=True))
     observation.ra = float(ra)
     observation.dec = float(dec)
     observation.metadata["cutout_npix"] = npix
     observation.metadata["cutout_size_deg"] = float(size_deg)
     return observation
+
+
+def harmonize_to_region(
+    observations: list[Observation],
+    ra: float,
+    dec: float,
+    size_deg: float,
+) -> list[Observation]:
+    """Deja todas las épocas en el mismo cuadrado de cielo (mismo npix)."""
+    if not observations:
+        return observations
+    npix = shared_target_npix(observations, size_deg)
+    cut = [cutout_region(obs, ra, dec, size_deg, npix=npix) for obs in observations]
+    return homogenize_shapes(cut)
 
 
 def homogenize_shapes(observations: list[Observation]) -> list[Observation]:

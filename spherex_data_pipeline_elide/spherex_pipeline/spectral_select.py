@@ -53,7 +53,7 @@ from spherex_pipeline.constants import (
     PROJECT_DIR,
     SPECTRAL_UNIT,
 )
-from spherex_pipeline.cutouts import cutout_region, homogenize_shapes
+from spherex_pipeline.cutouts import cutout_region, harmonize_to_region
 from spherex_pipeline.demo import load_demo_observations
 from spherex_pipeline.irsa import (
     dedupe_records,
@@ -668,7 +668,7 @@ def load_group_observations(
                 print(f"   -> FALLBACK {obs.fits_source} id={obs.id} λ_asignada={wl_val:.4f}")
 
     with StageProfiler("4. Homogeneizacion y agrupacion por epocas", metrics):
-        loaded_obs = homogenize_shapes(loaded_obs)
+        loaded_obs = harmonize_to_region(loaded_obs, ra, dec, size)
         surveys_dict: dict[int, list[Observation]] = {}
         for obs in loaded_obs:
             s_id = obs.metadata.get("survey_index", 1)
