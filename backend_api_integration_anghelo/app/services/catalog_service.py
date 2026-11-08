@@ -63,7 +63,39 @@ def fetch_phase1_metadata(
         ``survey_index``, ``fits_source``, ``shape`` and ``n_invalid_pixels``.
         An empty list means the requested group has no frames for the region.
     """
-    observations = get_observations(
+    observations, _ = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)
+    return [_to_metadata(observation) for observation in observations]
+
+
+def fetch_phase1_metadata_and_observations(
+    ra: float,
+    dec: float,
+    size_deg: float,
+    bandpass: str,
+    spectral_group: int,
+    cache_dir: str | Path,
+) -> tuple[list[dict], list[Observation]]:
+    """Return Phase 1 metadata plus the in-memory ``Observation`` objects.
+
+    ``get_observations`` from Elide already downloads the cutouts and builds the
+    ``Observation`` objects (with their ``.image`` NumPy matrices), so there is
+    no need to download the same FITS twice.  The metadata dicts go to the HTTP
+    202 response; the ``Observation`` objects are kept in memory for the PNG
+    render, RGB composite and Etner motion phases.
+    """
+    observations = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)[0]
+    return [_to_metadata(observation) for observation in observations], observations
+
+
+def _load_group(
+    ra: float,
+    dec: float,
+    size_deg: float,
+    bandpass: str,
+    spectral_group: int,
+    cache_dir: str | Path,
+) -> list[Observation]:
+    return get_observations(
         ra,
         dec,
         size_deg,
@@ -73,4 +105,3 @@ def fetch_phase1_metadata(
         source=_SOURCE,
         cache_dir=cache_dir,
     )
-    return [_to_metadata(observation) for observation in observations]
