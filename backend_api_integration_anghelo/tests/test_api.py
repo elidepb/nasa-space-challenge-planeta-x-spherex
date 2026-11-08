@@ -67,14 +67,17 @@ _FAKE_RECORDS = [
 ]
 
 
-async def _fake_process_background_group(session_id, records, cache_dir, images_dir):
-    """Fake Phase 2: fake PNG per record, store observations, mark COMPLETADO."""
+_FAKE_OBSERVATIONS = [_FakeObservation(r["obs_id"]) for r in _FAKE_RECORDS]
+
+
+async def _fake_process_background_group(session_id, observations, images_dir):
+    """Fake Phase 2: fake PNG per observation, mark COMPLETADO."""
     images_path = Path(images_dir)
     store = {}
-    for r in records:
-        obs_id = r["obs_id"]
+    for obs in observations:
+        obs_id = str(obs.id)
         _make_fake_png(obs_id, images_path)
-        store[obs_id] = _FakeObservation(obs_id)
+        store[obs_id] = obs
     router_module._OBSERVATION_STORE[session_id] = store
 
     repo = SessionRepositoryFactory.get_repository()
@@ -83,8 +86,8 @@ async def _fake_process_background_group(session_id, records, cache_dir, images_
         session = {"session_id": session_id}
     session["estado"] = "COMPLETADO"
     session["progreso_porcentaje"] = 100.0
-    session["observaciones_descargadas"] = len(records)
-    session["total_observaciones_grupo"] = len(records)
+    session["observaciones_descargadas"] = len(observations)
+    session["total_observaciones_grupo"] = len(observations)
     await repo.save(session)
 
 
@@ -119,7 +122,9 @@ def _post_analysis(extra=None):
 def test_start_spectral_analysis_returns_202():
     _clear_state()
     with patch.object(
-        router_module, "fetch_phase1_metadata", return_value=_FAKE_RECORDS
+        router_module,
+        "fetch_phase1_metadata_and_observations",
+        return_value=(_FAKE_RECORDS, _FAKE_OBSERVATIONS),
     ), patch.object(
         router_module, "process_background_group", _fake_process_background_group
     ):
@@ -136,7 +141,9 @@ def test_start_spectral_analysis_returns_202():
 def test_polling_transitions_to_completado():
     _clear_state()
     with patch.object(
-        router_module, "fetch_phase1_metadata", return_value=_FAKE_RECORDS
+        router_module,
+        "fetch_phase1_metadata_and_observations",
+        return_value=(_FAKE_RECORDS, _FAKE_OBSERVATIONS),
     ), patch.object(router_module, "process_background_group", _fake_process_background_group):
         response = _post_analysis()
         session_id_value = response.json()["session_id"]
@@ -152,7 +159,9 @@ def test_preview_png_returns_image_with_cache_control():
     _clear_state()
     session_id_value = None
     with patch.object(
-        router_module, "fetch_phase1_metadata", return_value=_FAKE_RECORDS[:1]
+        router_module,
+        "fetch_phase1_metadata_and_observations",
+        return_value=(_FAKE_RECORDS[:1], _FAKE_OBSERVATIONS[:1]),
     ), patch.object(router_module, "process_background_group", _fake_process_background_group):
         response = _post_analysis()
         session_id_value = response.json()["session_id"]

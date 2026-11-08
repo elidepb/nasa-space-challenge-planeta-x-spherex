@@ -27,12 +27,11 @@ from app.schemas.responses import (
     ObservationSummarySchema,
     SessionStatusResponse,
 )
-from app.services.catalog_service import fetch_phase1_metadata
+from app.services.catalog_service import fetch_phase1_metadata_and_observations
 from app.services.download_service import process_background_group
 from app.services.motion_service import run_etner_analysis
 from app.services.rgb_service import generate_rgb_png
 from app.storage.factory import SessionRepositoryFactory
-from spherex_pipeline.fits_reader import observation_from_fits
 
 router = APIRouter(tags=["spectral analyses"])
 
@@ -42,72 +41,29 @@ router = APIRouter(tags=["spectral analyses"])
 _OBSERVATION_STORE: dict[UUID, dict[str, Any]] = {}
 
 
-def _session_dirs(session_id: UUID) -> tuple[Path, Path]:
-    cache_dir = Path(settings.CACHE_DIR)
-    images_dir = Path(settings.IMAGES_DIR)
-    return cache_dir, images_dir
-
-
-def _store_observations(
-    session_id: UUID,
-    records: list[dict],
-    ra: float,
-    dec: float,
-    cache_dir: Path,
-) -> dict[str, Any]:
-    """Rehydrate Observation objects from locally cached FITS files."""
-    store: dict[str, Any] = {}
-    for record in records:
-        fits_source = record.get("fits_source")
-        obs_id = record.get("obs_id")
-        if not obs_id or not fits_source:
-            continue
-        candidate = Path(str(fits_source))
-        if not candidate.is_file():
-            continue
-        try:
-            obs = observation_from_fits(
-                candidate,
-                observation_id=str(obs_id),
-                ra=ra,
-                dec=dec,
-                timestamp_mjd=record.get("time_mjd"),
-                wavelength_fallback=record.get("wavelength"),
-                extra_metadata={
-                    "bandpass": record.get("bandpass"),
-                    "survey_index": record.get("survey_index"),
-                    "source": record.get("source", "irsa"),
-                    "local_path": str(candidate),
-                },
-            )
-            store[str(obs_id)] = obs
-        except Exception:  # noqa: BLE001 - one bad frame must not break the session
-            continue
-    return store
-
-
 async def _run_phase2(
     session_id: UUID,
-    records: list[dict],
-    ra: float,
-    dec: float,
-    cache_dir: Path,
+    observations: list[Any],
     images_dir: Path,
 ) -> None:
-    """Background Phase 2: download, render previews, then run Etner analysis."""
+    """Background Phase 2: render previews, then run Etner analysis.
+
+    ``observations`` are the ``Observation`` objects Elide already built during
+    Phase 1 (each one carries its ``.image`` NumPy matrix), so no FITS is
+    downloaded twice.
+    """
     repository = SessionRepositoryFactory.get_repository()
 
-    # Phase 2a: download + render previews.
+    # Phase 2a: render previews from the in-memory matrices.
     await process_background_group(
         session_id=session_id,
-        records=records,
-        cache_dir=cache_dir,
+        observations=observations,
         images_dir=images_dir,
     )
 
-    # Phase 2b: rehydrate observations in memory for RGB / motion endpoints.
-    observations = _store_observations(session_id, records, ra, dec, cache_dir)
-    _OBSERVATION_STORE[session_id] = observations
+    # Phase 2b: keep the observations in memory for RGB / motion endpoints.
+    store = {str(obs.id): obs for obs in observations}
+    _OBSERVATION_STORE[session_id] = store
 
     # Phase 2c: Etner motion analysis when at least two frames are ready.
     session = await repository.get_by_id(session_id)
@@ -115,10 +71,10 @@ async def _run_phase2(
         return
     session["estado"] = "COMPLETADO"
     session["progreso_porcentaje"] = 100.0
-    session["observaciones_descargadas"] = len(records)
+    session["observaciones_descargadas"] = len(observations)
     try:
         result = await asyncio.to_thread(
-            run_etner_analysis, list(observations.values())
+            run_etner_analysis, list(store.values())
         )
         session["candidatos_detectados"] = len(result.get("candidates", []) or [])
     except Exception as exc:  # noqa: BLE001 - motion failure must not block delivery
@@ -139,7 +95,7 @@ async def start_spectral_analysis(
     """Ejecuta la consulta TAP de IRSA para un grupo espectral y encola la Fase 2."""
     ensure_data_volumes()
 
-    records = fetch_phase1_metadata(
+    records, observations = fetch_phase1_metadata_and_observations(
         ra=request.ra,
         dec=request.dec,
         size_deg=request.size_deg,
@@ -154,7 +110,7 @@ async def start_spectral_analysis(
         {
             "session_id": session_id,
             "estado": "EN_PROCESO",
-            "message": f"Metadatos obtenidos. Descarga en segundo plano de {len(records)} observaciones iniciada.",
+            "message": f"Metadatos obtenidos. Procesamiento en segundo plano de {len(records)} observaciones iniciado.",
             "spectral_group": request.spectral_group,
             "ra": request.ra,
             "dec": request.dec,
@@ -169,15 +125,11 @@ async def start_spectral_analysis(
     background_tasks.add_task(
         _run_phase2,
         session_id,
-        records,
-        request.ra,
-        request.dec,
-        Path(settings.CACHE_DIR),
+        observations,
         Path(settings.IMAGES_DIR),
     )
-    _session_dirs(session_id)  # noqa: B018 - ensures per-run volume dirs exist
 
-    observaciones = [
+    observaciones_schema = [
         ObservationSummarySchema(
             id=r["obs_id"],
             timestamp=r["timestamp"],
@@ -193,9 +145,9 @@ async def start_spectral_analysis(
     return AnalysisResponse(
         session_id=session_id,
         estado="EN_PROCESO",
-        message=f"Metadatos obtenidos. Descarga en segundo plano de {len(records)} observaciones iniciada.",
+        message=f"Metadatos obtenidos. Procesamiento en segundo plano de {len(records)} observaciones iniciado.",
         spectral_group=request.spectral_group,
-        observaciones=observaciones,
+        observaciones=observaciones_schema,
     )
 
 
@@ -397,7 +349,7 @@ async def get_candidates(
     store = _OBSERVATION_STORE.get(session_id, {})
     observations = list(store.values())
     result = await asyncio.to_thread(
-        motion_service.run_etner_analysis, observations
+        run_etner_analysis, observations
     )
     candidates = result.get("candidates", []) or []
     return CandidateResponse(
