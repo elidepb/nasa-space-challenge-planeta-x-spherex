@@ -1,0 +1,13 @@
+**/.DS_Store
+**/__pycache__
+**/.venv
+**/.env
+**/.git
+**/.gitignore
+**/.pytest_cache
+**/*.pyc
+**/node_modules
+data/cache/*
+data/images/*
+!data/cache/.gitkeep
+!data/images/.gitkeep
