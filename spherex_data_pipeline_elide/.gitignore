@@ -1,3 +1,9 @@
+# Archivos del sistema operativo
+.DS_Store
+
+# Datos del pipeline SPHEREx
+data/
+
 __pycache__/
 *.py[cod]
 *.egg-info/
