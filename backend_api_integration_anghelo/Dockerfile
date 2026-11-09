@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Dependencias del sistema para compilar/ejecutar numpy, astropy y Pillow
+# Dependencias del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -23,24 +23,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 1. Manifiestos de dependencias primero (aprovecha caché de capas de Docker)
-COPY pyproject.toml requirements.txt ./
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-# 2. Paquetes hermanos del workspace para importar spherex_pipeline (Elide) y astro_pipeline (Etner)
+# 1. Copiar e instalar paquetes hermanos en el workspace
 COPY ./spherex_data_pipeline_elide ./spherex_data_pipeline_elide
 COPY ./scientific_motion_engine_etner ./scientific_motion_engine_etner
-RUN pip install --no-deps -e ./spherex_data_pipeline_elide
-RUN pip install --no-deps -e ./scientific_motion_engine_etner
+RUN pip install --upgrade pip && \
+    pip install --no-deps ./spherex_data_pipeline_elide && \
+    pip install --no-deps ./scientific_motion_engine_etner
 
-# 3. Código del backend
-COPY ./app ./app
-COPY ./main.py ./
+# 2. Copiar el backend a su propia subcarpeta y establecerla como directorio de trabajo
+COPY ./backend_api_integration_anghelo ./backend_api_integration_anghelo
+WORKDIR /app/backend_api_integration_anghelo
 
-# Volúmenes de datos (FITS crudos y PNGs renderizados)
-VOLUME /app/data/cache
-VOLUME /app/data/images
+# 3. Instalar la aplicación y sus dependencias
+RUN pip install .
+
+# Volúmenes de datos
+VOLUME /app/backend_api_integration_anghelo/data/cache
+VOLUME /app/backend_api_integration_anghelo/data/images
 
 EXPOSE 8000
 

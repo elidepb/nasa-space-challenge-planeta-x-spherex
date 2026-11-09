@@ -63,7 +63,7 @@ def fetch_phase1_metadata(
         ``survey_index``, ``fits_source``, ``shape`` and ``n_invalid_pixels``.
         An empty list means the requested group has no frames for the region.
     """
-    observations, _ = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)
+    observations = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)
     return [_to_metadata(observation) for observation in observations]
 
 
@@ -83,7 +83,7 @@ def fetch_phase1_metadata_and_observations(
     202 response; the ``Observation`` objects are kept in memory for the PNG
     render, RGB composite and Etner motion phases.
     """
-    observations = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)[0]
+    observations = _load_group(ra, dec, size_deg, bandpass, spectral_group, cache_dir)
     return [_to_metadata(observation) for observation in observations], observations
 
 

@@ -11,9 +11,9 @@ from pydantic import BaseModel, ConfigDict
 class ObservationSummarySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id_exposicion: str
     timestamp: str
-    detector: int
+    survey_index: int
     wavelength: Optional[float] = None
     bandwidth: Optional[float] = None
     fits_source: str
@@ -62,9 +62,17 @@ class AnalysisResponse(BaseModel):
     observaciones: List[ObservationSummarySchema]
 
 
+class CandidatePairResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    survey_pair: List[int]
+    total_candidatos: int
+    candidatos: List[dict]
+
+
 class CandidateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     session_id: UUID
     total_candidatos: int
-    candidatos: List[dict]
+    pairs: List[CandidatePairResult]

@@ -8,15 +8,17 @@ version = "0.1.0"
 description = "SPHEREx Planet X backend API integration (P3) — Service-Layer architecture."
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.100.0",
-    "uvicorn>=0.23.0",
+    "fastapi[standard]>=0.100.0",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "httpx>=0.25",
     "numpy>=1.26",
     "astropy>=6.0",
+    "reproject>=0.13",
+    "matplotlib>=3.8",
+    "pyvo>=1.5",
+    "astroquery>=0.4.7",
     "Pillow>=10.0",
-    "python-multipart>=0.0.6",
     "motor>=3.0",
 ]
 
@@ -26,3 +28,6 @@ dev = ["pytest>=8.0", "httpx>=0.25"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools]
+packages = ["app"]
