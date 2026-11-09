@@ -7,19 +7,19 @@ import type {
   RegionQuery,
 } from '../types/contracts'
 
-/** Endpoints mínimos definidos para el backend de Anghelo. */
+/** API del front; el adaptador HTTP habla con /api/v1/spectral-analyses. */
 export interface SpherexApi {
-  /** POST /analysis */
+  /** POST /api/v1/spectral-analyses → AnalysisInfo */
   createAnalysis(query: RegionQuery): Promise<AnalysisInfo>
-  /** GET /analysis/{id} */
+  /** GET /api/v1/spectral-analyses/{session_id} */
   getAnalysis(id: string): Promise<AnalysisInfo>
-  /** GET /analysis/{id}/observations */
+  /** GET …/observations */
   getObservations(id: string): Promise<ObservationSummary[]>
-  /** GET /analysis/{id}/candidates */
+  /** GET …/candidates (pairs aplanados) */
   getCandidates(id: string): Promise<Candidate[]>
-  /** GET /analysis/{id}/images */
+  /** GET …/images → AnalysisImages (epochs desde preview_png_url) */
   getImages(id: string): Promise<AnalysisImages>
-  /** GET /analysis/{id}/known-objects (propuesto: SkyBoT por época, resuelto en el backend) */
+  /** Known objects (aún no en backend → []) */
   getKnownObjects(id: string): Promise<KnownObject[]>
 }
 

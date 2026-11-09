@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/I18nProvider'
 import { sbdbUrl, simbadUrl } from '../lib/hunter'
-import { formatDecDms, formatRaHms, formatTimestamp } from '../lib/sky'
-import type { Candidate, KnownObject, ObservationSummary } from '../types/contracts'
+import { formatDecDms, formatRaHms } from '../lib/sky'
+import type { Candidate, KnownObject } from '../types/contracts'
 
 interface ListProps {
   candidates: Candidate[]
@@ -46,13 +46,10 @@ export function CandidateList({ candidates, selectedId, onSelect, knownMatches }
 
 interface DetailsProps {
   candidate: Candidate | null
-  observations: ObservationSummary[]
-  activeObservationId: string | null
-  onSelectObservation: (index: number) => void
   knownMatch: KnownObject | null
 }
 
-export function CandidateDetails({ candidate, observations, activeObservationId, onSelectObservation, knownMatch }: DetailsProps) {
+export function CandidateDetails({ candidate, knownMatch }: DetailsProps) {
   const { t } = useI18n()
 
   if (!candidate) {
@@ -63,8 +60,6 @@ export function CandidateDetails({ candidate, observations, activeObservationId,
       </section>
     )
   }
-
-  const indexOf = (id: string) => observations.findIndex((o) => o.id === id)
 
   return (
     <section className="panel grow">
@@ -107,37 +102,6 @@ export function CandidateDetails({ candidate, observations, activeObservationId,
           SIMBAD ↗
         </a>
       </div>
-
-      <h3 className="subtitle">{t('candidates.detections', { n: candidate.detections.length })}</h3>
-      <table className="det-table">
-        <thead>
-          <tr>
-            <th>{t('candidates.table.index')}</th>
-            <th>{t('candidates.table.date')}</th>
-            <th>{t('candidates.table.position')}</th>
-            <th>{t('candidates.table.snr')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {candidate.detections.map((d) => {
-            const idx = indexOf(d.observationId)
-            return (
-              <tr
-                key={d.observationId}
-                className={d.observationId === activeObservationId ? 'active' : ''}
-                onClick={() => idx >= 0 && onSelectObservation(idx)}
-              >
-                <td>{idx + 1}</td>
-                <td>{formatTimestamp(d.timestamp).slice(0, 10)}</td>
-                <td>
-                  {d.x.toFixed(1)}, {d.y.toFixed(1)}
-                </td>
-                <td>{d.snr?.toFixed(1) ?? '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
     </section>
   )
 }

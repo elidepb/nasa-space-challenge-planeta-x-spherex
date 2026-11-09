@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { AnalysisInfo, AnalysisResult, RegionQuery } from '../types/contracts'
 
-const POLL_MS = 600
+const POLL_MS = 1000
+/** Descarga FITS + Etner puede tardar; ~10 min de polling. */
+const MAX_POLLS = 600
 
 export type AnalysisPhase = 'idle' | 'submitting' | 'pending' | 'processing' | 'loading-results' | 'completed' | 'error'
 
@@ -28,12 +30,23 @@ export function useAnalysis() {
 
     try {
       let info = await api.createAnalysis(query)
-      while (alive() && (info.status === 'pending' || info.status === 'processing')) {
+      let polls = 0
+      while (alive() && (info.status === 'pending' || info.status === 'processing') && polls < MAX_POLLS) {
         setState((s) => ({ ...s, phase: info.status as AnalysisPhase, info }))
         await new Promise((r) => setTimeout(r, POLL_MS))
         info = await api.getAnalysis(info.id)
+        polls++
       }
       if (!alive()) return
+      if (info.status === 'pending' || info.status === 'processing') {
+        setState({
+          phase: 'error',
+          info,
+          result: null,
+          error: 'El análisis tardó demasiado. Revisa el backend o vuelve a intentar.',
+        })
+        return
+      }
       if (info.status === 'error') {
         setState({ phase: 'error', info, result: null, error: info.error ?? null })
         return

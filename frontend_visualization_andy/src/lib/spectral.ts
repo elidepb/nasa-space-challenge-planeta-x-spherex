@@ -17,6 +17,8 @@ export type Bandpass = (typeof BANDPASSES)[number]
 export const N_SPECTRAL_GROUPS = 17
 /** 6 detectores × 17 canales = 102 bandas SPHEREx. */
 export const TOTAL_BANDS = BANDPASSES.length * N_SPECTRAL_GROUPS
+/** Máximo de bandas seleccionables a la vez en el frontend. */
+export const MAX_SELECTED_BANDS = 3
 export const DEFAULT_BANDPASS: Bandpass = 'SPHEREx-D2'
 export const DEFAULT_SPECTRAL_GROUP = 7
 /** Índice global 1–102 del default (D2 · canal 7). */
@@ -121,6 +123,7 @@ export function normalizeBands(
     .map((b) => clampBandIndex(b))
     .filter((b, i, arr) => arr.indexOf(b) === i)
     .sort((a, b) => a - b)
+    .slice(0, MAX_SELECTED_BANDS)
   if (raw.length > 0) return raw
   return [bandIndexFromParts(normalizeBandpass(fallbackBandpass), clampSpectralGroup(fallbackGroup))]
 }

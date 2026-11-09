@@ -7,7 +7,6 @@ import { ImageControls } from './components/ImageControls'
 import { AboutModal, FieldGuideModal, HelpModal } from './components/InfoModals'
 import { IntroModal } from './components/IntroModal'
 import { LanguageSelector } from './components/LanguageSelector'
-import { ObservationList } from './components/ObservationList'
 import { SearchPanel } from './components/SearchPanel'
 import { SkyViewer } from './components/SkyViewer'
 import { StatusView } from './components/StatusView'
@@ -398,24 +397,7 @@ export default function App() {
       </header>
 
       <aside className="sidebar left">
-        <SearchPanel
-          busy={busy}
-          onSubmit={runSearch}
-          externalQuery={externalQuery}
-          activeFeatures={activeFeatures}
-          layersAvailable={Boolean(images?.featureLayers?.length)}
-          onToggleFeature={(id) => {
-            const turningOn = !activeFeatures.includes(id)
-            setActiveFeatures((cur) => (turningOn ? [...cur, id] : cur.filter((x) => x !== id)))
-            if (turningOn) showToast(t(`search.features.${id}On`))
-          }}
-        />
-        <ObservationList
-          observations={observations}
-          activeIndex={activeIndex}
-          referenceId={observations[referenceIndex]?.id ?? null}
-          onSelect={setActiveIndex}
-        />
+        <SearchPanel busy={busy} onSubmit={runSearch} externalQuery={externalQuery} />
       </aside>
 
       <main className="center" ref={centerRef}>
@@ -456,11 +438,11 @@ export default function App() {
                     type="checkbox"
                     checked={on}
                     disabled={!available}
-                    onChange={(e) =>
-                      setActiveFeatures((cur) =>
-                        e.target.checked ? [...cur, f.id] : cur.filter((id) => id !== f.id),
-                      )
-                    }
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setActiveFeatures((cur) => (on ? [...cur, f.id] : cur.filter((id) => id !== f.id)))
+                      if (on) showToast(t(`search.features.${f.id}On`))
+                    }}
                   />
                   {t(`search.features.${f.id}`)}
                 </label>
@@ -624,9 +606,6 @@ export default function App() {
         ) : (
           <CandidateDetails
             candidate={selectedCandidate}
-            observations={observations}
-            activeObservationId={displayed?.id ?? null}
-            onSelectObservation={setActiveIndex}
             knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
           />
         )}
