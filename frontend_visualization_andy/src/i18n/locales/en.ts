@@ -110,7 +110,7 @@ const en = {
     layersTitle: 'Layers on the image',
     layersHint: 'Toggle to paint dust, gases or hydrogen over the sky (visible immediately).',
     layersNeedAnalysis: 'Search & analyze a region first; then you can turn layers on.',
-    challengeTargets: 'Challenge targets',
+    challengeTargets: 'Targets with SPHEREx data',
     demoTargets: 'Demo fields',
     features: {
       hydrogen: 'Hydrogen',

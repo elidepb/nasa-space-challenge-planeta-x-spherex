@@ -192,7 +192,11 @@ export const SPECTRAL_FEATURES: SpectralFeature[] = [
   },
 ]
 
-/** Targets de prueba del challenge Planet X / SPHEREx (coords J2000). */
+/**
+ * Targets del challenge con datos SPHEREx verificados
+ * (`scientific_motion_engine_etner/challenge_targets/summary.json`:
+ * qr2 · SPHEREx-D2 · group=7 · size=0.05 · ok + n_observations > 0).
+ */
 export const CHALLENGE_TARGETS: {
   id: string
   labelKey: string
@@ -201,27 +205,26 @@ export const CHALLENGE_TARGETS: {
   {
     id: 'wise0855',
     labelKey: 'search.presets.wise0855',
-    // WISE 0855−0714 — brown dwarf del “first hour”
-    query: { ra: 133.795, dec: -7.24514, size: 0.05, bandpass: 'SPHEREx-D2', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 133.795129, dec: -7.245147, size: 0.05, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'barnard',
     labelKey: 'search.presets.barnard',
-    query: { ra: 269.45208, dec: 4.69339, size: 0.05, bandpass: 'SPHEREx-D2', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 269.452076, dec: 4.693391, size: 0.05, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'epsIndiB',
     labelKey: 'search.presets.epsIndiB',
-    query: { ra: 331.072, dec: -56.7859, size: 0.05, bandpass: 'SPHEREx-D3', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 331.043833, dec: -56.782694, size: 0.05, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'rwAur',
     labelKey: 'search.presets.rwAur',
-    query: { ra: 76.95653, dec: 30.40144, size: 0.05, bandpass: 'SPHEREx-D4', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 76.956417, dec: 30.401408, size: 0.05, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'rDra',
     labelKey: 'search.presets.rDra',
-    query: { ra: 268.13958, dec: 61.53, size: 0.05, bandpass: 'SPHEREx-D5', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 248.167625, dec: 66.754444, size: 0.05, bandpass: 'SPHEREx-D2', group: 7 },
   },
 ]

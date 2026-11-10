@@ -34,9 +34,10 @@ const SPEEDS = [
   { label: '2×', stepMs: 900, blinkMs: 250 },
 ]
 const INTRO_KEY = 'spherex.introSeen'
+/** Primer target con datos verificados (WISE 0855 · D2 · canal 7). */
 const DEMO_QUERY: RegionQuery = {
-  ra: 210.80227,
-  dec: 54.34895,
+  ra: 133.795129,
+  dec: -7.245147,
   size: 0.05,
   qr: 'qr2',
   bandpass: 'SPHEREx-D2',
@@ -104,9 +105,7 @@ export default function App() {
     [analysis.start],
   )
 
-  useEffect(() => {
-    if (initialUrl.query) runSearch(initialUrl.query)
-  }, [])
+  // No auto-lanzar análisis al cargar/recargar: la URL solo rellena el formulario.
 
   // Nuevo resultado: restablecer vista (o aplicar la de una URL compartida).
   useEffect(() => {

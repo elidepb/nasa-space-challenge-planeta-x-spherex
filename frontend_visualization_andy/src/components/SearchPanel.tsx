@@ -11,12 +11,6 @@ import {
 import type { RegionQuery } from '../types/contracts'
 import { SpectralBandPicker } from './SpectralBandPicker'
 
-const DEMO_PRESETS: { label: MessageKey; query: RegionQuery }[] = [
-  { label: 'search.presets.m101', query: { ra: 210.80227, dec: 54.34895, size: 0.05 } },
-  { label: 'search.presets.nep', query: { ra: 270.0, dec: 66.56071, size: 0.05 } },
-  { label: 'search.presets.sep', query: { ra: 90.0, dec: -66.56071, size: 0.05 } },
-]
-
 const SCENARIOS: MockScenario[] = ['normal', 'slow', 'empty', 'error']
 
 type FieldError = 'ra' | 'dec' | 'size'
@@ -34,9 +28,9 @@ function bandsFromQuery(q: RegionQuery): number[] {
 
 export function SearchPanel({ busy, onSubmit, externalQuery }: Props) {
   const { t } = useI18n()
-  const [ra, setRa] = useState('210.80227')
-  const [dec, setDec] = useState('54.34895')
-  const [size, setSize] = useState('0.05')
+  const [ra, setRa] = useState(String(CHALLENGE_TARGETS[0].query.ra))
+  const [dec, setDec] = useState(String(CHALLENGE_TARGETS[0].query.dec))
+  const [size, setSize] = useState(String(CHALLENGE_TARGETS[0].query.size))
   const [qr, setQr] = useState('qr2')
   const [bands, setBands] = useState<number[]>([DEFAULT_BAND_INDEX])
   const [scenario, setScenario] = useState<MockScenario>('normal')
@@ -115,21 +109,10 @@ export function SearchPanel({ busy, onSubmit, externalQuery }: Props) {
               type="button"
               key={p.id}
               className="chip challenge"
-              title={`${p.query.ra.toFixed(4)}°, ${p.query.dec.toFixed(4)}°`}
+              title={`${p.query.ra.toFixed(4)}°, ${p.query.dec.toFixed(4)}° · ${p.query.bandpass} · g${p.query.group}`}
               onClick={() => applyPreset(p.query)}
             >
               {t(p.labelKey as MessageKey)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="presets-block">
-        <span className="presets-label">{t('search.demoTargets')}</span>
-        <div className="presets">
-          {DEMO_PRESETS.map((p) => (
-            <button type="button" key={p.label} className="chip" onClick={() => applyPreset(p.query)}>
-              {t(p.label)}
             </button>
           ))}
         </div>
