@@ -56,13 +56,13 @@ export function fillDemoCandidatesIfEmpty(
 
   const movers: { id: string; dets: CandidateDetection[]; snr: number; status: Candidate['status'] }[] = [
     {
-      id: 'C-DEMO-01',
+      id: 'C-001',
       snr: 14.2,
       status: 'candidate',
       dets: track(w * 0.28, h * 0.62, w * 0.38, -h * 0.22, 14.2),
     },
     {
-      id: 'C-DEMO-02',
+      id: 'C-002',
       snr: 9.6,
       status: 'candidate',
       dets: track(w * 0.55, h * 0.35, w * 0.18, h * 0.28, 9.6),
