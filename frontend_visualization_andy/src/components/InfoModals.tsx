@@ -131,9 +131,7 @@ export function FieldGuideModal({ onClose }: { onClose: () => void }) {
 
 const SHORTCUTS: [string, MessageKey][] = [
   ['← →', 'help.keys.epoch'],
-  ['Space', 'help.keys.play'],
-  ['O · B · D · S', 'help.keys.modes'],
-  ['H', 'help.keys.hunter'],
+  ['O · S', 'help.keys.modes'],
   ['G', 'help.keys.grid'],
   ['K', 'help.keys.known'],
   ['F', 'help.keys.fullscreen'],

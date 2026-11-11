@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from 'react'
 import { useI18n } from '../i18n/I18nProvider'
-import type { HunterMark } from '../lib/hunter'
 import { formatDecDms, formatRaHms, pixelToSky } from '../lib/sky'
 import type { Candidate, FeatureLayerImage, KnownObject, RegionQuery } from '../types/contracts'
 
@@ -34,9 +33,6 @@ interface Props {
   activeFeatureIds?: string[]
   /** Crossfade al cambiar de época (desactivado en blink/swipe). */
   crossfade?: boolean
-  hunterActive: boolean
-  hunterMarks: HunterMark[]
-  onHunterMark: (x: number, y: number) => void
   badge?: ReactNode
   placeholder?: ReactNode
 }
@@ -222,8 +218,7 @@ export function SkyViewer(props: Props) {
     // Centro del píxel = coordenada entera, igual que las detecciones del backend.
     const ix = p.x - 0.5
     const iy = p.y - 0.5
-    if (props.hunterActive) props.onHunterMark(ix, iy)
-    else setPin({ x: ix, y: iy })
+    setPin({ x: ix, y: iy })
   }
 
   const toSky = (x: number, y: number) =>
@@ -258,7 +253,7 @@ export function SkyViewer(props: Props) {
     <div className="viewer">
       <div
         ref={stageRef}
-        className={`viewer-stage ${drag.current?.moved ? 'dragging' : ''} ${props.hunterActive ? 'hunting' : ''}`}
+        className={`viewer-stage ${drag.current?.moved ? 'dragging' : ''}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -273,7 +268,13 @@ export function SkyViewer(props: Props) {
               alt={t('viewer.alt')}
               draggable={false}
               className={`viewer-image crossfade-in ${outgoingUrl ? (fadeActive ? 'is-visible' : 'is-hidden') : 'is-visible'}`}
-              style={{ filter: props.imageFilter }}
+              style={{
+                filter: props.imageFilter,
+                // En swipe: la época B queda a la derecha; la A (compare) a la izquierda.
+                ...(compareUrl
+                  ? { clipPath: `inset(0 0 0 ${Math.min(100, Math.max(0, splitContent))}%)` }
+                  : null),
+              }}
             />
           )}
           {outgoingUrl && (
@@ -292,7 +293,10 @@ export function SkyViewer(props: Props) {
               alt=""
               draggable={false}
               className="viewer-image compare"
-              style={{ filter: props.imageFilter, clipPath: `inset(0 ${Math.max(0, 100 - splitContent)}% 0 0)` }}
+              style={{
+                filter: props.imageFilter,
+                clipPath: `inset(0 ${Math.max(0, 100 - splitContent)}% 0 0)`,
+              }}
             />
           )}
           {(props.featureLayers ?? [])
@@ -347,15 +351,25 @@ export function SkyViewer(props: Props) {
             {props.showOverlays &&
               candidates.map((c) => {
                 const selected = c.id === selectedCandidateId
-                const current = c.detections.find((d) => d.observationId === activeObservationId)
-                const anchor = current ?? c.detections[0]
+                // Preferir detection de la época activa; si el wire mezcló ids, usar la 1ª válida.
+                const current =
+                  (activeObservationId
+                    ? c.detections.find((d) => d.observationId === activeObservationId)
+                    : null) ??
+                  c.detections.find((d) => Number.isFinite(d.x) && Number.isFinite(d.y))
+                if (!current || !Number.isFinite(current.x) || !Number.isFinite(current.y)) return null
+                // Si no hay match de época, no inventar track en el vacío.
+                const onThisEpoch = Boolean(
+                  activeObservationId && c.detections.some((d) => d.observationId === activeObservationId),
+                )
+                if (activeObservationId && !onThisEpoch) return null
                 return (
                   <g
                     key={c.id}
                     className={`cand cand-${c.status} ${selected ? 'selected' : ''}`}
-                    onPointerDown={(e) => !props.hunterActive && e.stopPropagation()}
-                    onPointerUp={(e) => !props.hunterActive && e.stopPropagation()}
-                    onClick={() => !props.hunterActive && props.onSelectCandidate(c.id)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onClick={() => props.onSelectCandidate(c.id)}
                   >
                     {props.showTrajectories && c.detections.length > 1 && (
                       <>
@@ -365,38 +379,13 @@ export function SkyViewer(props: Props) {
                         ))}
                       </>
                     )}
-                    <circle className={`cand-marker ${current ? '' : 'absent'}`} cx={anchor.x + 0.5} cy={anchor.y + 0.5} r={markerR} />
-                    <text x={anchor.x + 0.5 + markerR * 1.2} y={anchor.y + 0.5 - markerR * 1.1} fontSize={fontSize} className="cand-label">
+                    <circle className="cand-marker" cx={current.x + 0.5} cy={current.y + 0.5} r={markerR} />
+                    <text x={current.x + 0.5 + markerR * 1.2} y={current.y + 0.5 - markerR * 1.1} fontSize={fontSize} className="cand-label">
                       {c.id}
                     </text>
                   </g>
                 )
               })}
-
-            {props.hunterActive && props.hunterMarks.length > 0 && (
-              <g className="hunter">
-                {props.hunterMarks.length > 1 && (
-                  <polyline className="hunter-track" points={props.hunterMarks.map((m) => `${m.x + 0.5},${m.y + 0.5}`).join(' ')} />
-                )}
-                {props.hunterMarks.map((m, i) => {
-                  const current = m.observationId === activeObservationId
-                  const r = markerR * (current ? 1 : 0.6)
-                  const cx = m.x + 0.5
-                  const cy = m.y + 0.5
-                  return (
-                    <g key={m.observationId} className={`hunter-mark ${current ? 'current' : ''}`}>
-                      <line x1={cx - r * 1.6} y1={cy} x2={cx - r * 0.5} y2={cy} />
-                      <line x1={cx + r * 0.5} y1={cy} x2={cx + r * 1.6} y2={cy} />
-                      <line x1={cx} y1={cy - r * 1.6} x2={cx} y2={cy - r * 0.5} />
-                      <line x1={cx} y1={cy + r * 0.5} x2={cx} y2={cy + r * 1.6} />
-                      <text x={cx + r * 1.2} y={cy + r * 2.4} fontSize={fontSize * 0.8} className="hunter-label">
-                        {i + 1}
-                      </text>
-                    </g>
-                  )
-                })}
-              </g>
-            )}
 
             {pin && (
               <g className="pin">
@@ -414,9 +403,10 @@ export function SkyViewer(props: Props) {
               className="split-handle"
               style={{ left: `${split * 100}%` }}
               onPointerDown={(e) => {
+                e.preventDefault()
                 e.stopPropagation()
-                ;(e.currentTarget.parentElement as HTMLElement).setPointerCapture(e.pointerId)
                 splitDrag.current = true
+                stageRef.current?.setPointerCapture(e.pointerId)
               }}
             >
               <span>⇔</span>
@@ -495,7 +485,7 @@ export function SkyViewer(props: Props) {
               <span>Dec {formatDecDms(hoverSky.dec)}</span>
             </>
           ) : (
-            <span className="muted">{props.hunterActive ? t('hunter.viewerHint') : t('viewer.help')}</span>
+            <span className="muted">{t('viewer.help')}</span>
           )}
         </div>
       </div>

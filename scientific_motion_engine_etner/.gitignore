@@ -55,3 +55,7 @@ desktop.ini
 *.log
 *.tmp
 *.temp
+
+# Datos y productos SPHEREx del desafío NASA Space Apps
+spherex_6_bandas/
+data/

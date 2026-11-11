@@ -7,8 +7,8 @@ import {
   primaryFromBands,
 } from './spectral'
 
-export type ViewMode = 'original' | 'blink' | 'difference' | 'swipe'
-export const VIEW_MODES: ViewMode[] = ['original', 'blink', 'difference', 'swipe']
+export type ViewMode = 'original' | 'swipe'
+export const VIEW_MODES: ViewMode[] = ['original', 'swipe']
 
 export interface UrlState {
   query: RegionQuery | null
@@ -47,7 +47,7 @@ export function readUrlState(): UrlState {
       ? {
           ra,
           dec,
-          size: Number.isFinite(size) ? size : 0.05,
+          size: Number.isFinite(size) ? size : 0.85,
           qr: p.get('qr') ?? 'qr2',
           bandpass: primary.bandpass,
           group: primary.group,
@@ -75,7 +75,6 @@ export function writeUrlState(state: UrlState) {
     const primary = primaryFromBands(bands)
     p.set('band', primary.bandpass)
     p.set('group', String(primary.group))
-    p.set('bands', bands.join(','))
   }
   if (state.mode && state.mode !== 'original') p.set('mode', state.mode)
   if (state.epoch !== undefined) p.set('epoch', String(state.epoch + 1))

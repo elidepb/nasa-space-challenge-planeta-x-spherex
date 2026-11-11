@@ -7,11 +7,10 @@ interface Props {
   epochs: EpochImage[]
   activeIndex: number
   referenceIndex: number
-  markedIds: Set<string>
   onSelect: (index: number) => void
 }
 
-export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, markedIds, onSelect }: Props) {
+export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, onSelect }: Props) {
   const { t } = useI18n()
   const activeRef = useRef<HTMLButtonElement>(null)
 
@@ -20,7 +19,8 @@ export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, m
   }, [activeIndex])
 
   if (observations.length === 0) return null
-  const urlFor = (id: string) => epochs.find((e) => e.observationId === id)?.url
+  const urlFor = (id: string, i: number) =>
+    epochs.find((e) => e.observationId === id)?.url ?? epochs[i]?.url
 
   return (
     <div className="filmstrip" role="listbox" aria-label={t('filmstrip.label')}>
@@ -34,10 +34,9 @@ export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, m
           role="option"
           aria-selected={i === activeIndex}
         >
-          {urlFor(o.id) && <img src={urlFor(o.id)} alt="" draggable={false} />}
+          {urlFor(o.id, i) && <img src={urlFor(o.id, i)!} alt="" draggable={false} />}
           <span className="thumb-n">{i + 1}</span>
           {i === referenceIndex && <span className="thumb-tag">{t('observations.reference')}</span>}
-          {markedIds.has(o.id) && <span className="thumb-mark">◎</span>}
         </button>
       ))}
     </div>

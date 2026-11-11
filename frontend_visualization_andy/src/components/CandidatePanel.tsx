@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/I18nProvider'
 import { sbdbUrl, simbadUrl } from '../lib/hunter'
-import { formatDecDms, formatRaHms, formatTimestamp } from '../lib/sky'
-import type { Candidate, KnownObject, ObservationSummary } from '../types/contracts'
+import { formatDecDms, formatRaHms } from '../lib/sky'
+import type { Candidate, KnownObject } from '../types/contracts'
 
 interface ListProps {
   candidates: Candidate[]
@@ -26,14 +26,18 @@ export function CandidateList({ candidates, selectedId, onSelect, knownMatches }
               <button className={`cand-item ${c.id === selectedId ? 'active' : ''}`} onClick={() => onSelect(c.id)}>
                 <span className={`status-dot status-${c.status}`} />
                 <span className="cand-id">{c.id}</span>
-                <span className="muted small">{t('candidates.perYear', { v: c.motionArcsecPerYear.toFixed(1) })}</span>
+                <span className="muted small">
+                  {t('candidates.perYear', {
+                    v: Number.isFinite(c.motionArcsecPerYear) ? c.motionArcsecPerYear.toFixed(1) : '—',
+                  })}
+                </span>
                 {c.status !== 'artifact' && c.status !== 'rejected' && (
                   <span className={`tag ${knownMatches.has(c.id) ? 'tag-known' : 'tag-new'}`}>
                     {knownMatches.has(c.id) ? t('candidates.known') : t('candidates.new')}
                   </span>
                 )}
                 <span className="snr">
-                  {t('candidates.snr')} {c.snr.toFixed(1)}
+                  {t('candidates.snr')} {Number.isFinite(c.snr) ? c.snr.toFixed(1) : '—'}
                 </span>
               </button>
             </li>
@@ -46,13 +50,10 @@ export function CandidateList({ candidates, selectedId, onSelect, knownMatches }
 
 interface DetailsProps {
   candidate: Candidate | null
-  observations: ObservationSummary[]
-  activeObservationId: string | null
-  onSelectObservation: (index: number) => void
   knownMatch: KnownObject | null
 }
 
-export function CandidateDetails({ candidate, observations, activeObservationId, onSelectObservation, knownMatch }: DetailsProps) {
+export function CandidateDetails({ candidate, knownMatch }: DetailsProps) {
   const { t } = useI18n()
 
   if (!candidate) {
@@ -64,8 +65,6 @@ export function CandidateDetails({ candidate, observations, activeObservationId,
     )
   }
 
-  const indexOf = (id: string) => observations.findIndex((o) => o.id === id)
-
   return (
     <section className="panel grow">
       <h2 className="panel-title">
@@ -75,18 +74,36 @@ export function CandidateDetails({ candidate, observations, activeObservationId,
       <dl className="details">
         <dt>{t('candidates.ra')}</dt>
         <dd>
-          {formatRaHms(candidate.ra)} <span className="muted">({candidate.ra.toFixed(5)}°)</span>
+          {Number.isFinite(candidate.ra) ? (
+            <>
+              {formatRaHms(candidate.ra)} <span className="muted">({candidate.ra.toFixed(5)}°)</span>
+            </>
+          ) : (
+            <span className="muted">—</span>
+          )}
         </dd>
         <dt>{t('candidates.dec')}</dt>
         <dd>
-          {formatDecDms(candidate.dec)} <span className="muted">({candidate.dec.toFixed(5)}°)</span>
+          {Number.isFinite(candidate.dec) ? (
+            <>
+              {formatDecDms(candidate.dec)} <span className="muted">({candidate.dec.toFixed(5)}°)</span>
+            </>
+          ) : (
+            <span className="muted">—</span>
+          )}
         </dd>
         <dt>{t('candidates.displacement')}</dt>
-        <dd>{candidate.displacementArcsec.toFixed(2)}″</dd>
+        <dd>
+          {Number.isFinite(candidate.displacementArcsec) ? `${candidate.displacementArcsec.toFixed(2)}″` : '—'}
+        </dd>
         <dt>{t('candidates.motion')}</dt>
-        <dd>{t('candidates.perYear', { v: candidate.motionArcsecPerYear.toFixed(2) })}</dd>
+        <dd>
+          {t('candidates.perYear', {
+            v: Number.isFinite(candidate.motionArcsecPerYear) ? candidate.motionArcsecPerYear.toFixed(2) : '—',
+          })}
+        </dd>
         <dt>{t('candidates.snr')}</dt>
-        <dd>{candidate.snr.toFixed(1)}</dd>
+        <dd>{Number.isFinite(candidate.snr) ? candidate.snr.toFixed(1) : '—'}</dd>
       </dl>
 
       {candidate.status !== 'artifact' &&
@@ -102,42 +119,13 @@ export function CandidateDetails({ candidate, observations, activeObservationId,
             <strong>🚀 {t('candidates.notInCatalogs')}</strong>
           </div>
         ))}
-      <div className="row gap wrap">
-        <a className="chip" href={simbadUrl(candidate.ra, candidate.dec)} target="_blank" rel="noreferrer">
-          SIMBAD ↗
-        </a>
-      </div>
-
-      <h3 className="subtitle">{t('candidates.detections', { n: candidate.detections.length })}</h3>
-      <table className="det-table">
-        <thead>
-          <tr>
-            <th>{t('candidates.table.index')}</th>
-            <th>{t('candidates.table.date')}</th>
-            <th>{t('candidates.table.position')}</th>
-            <th>{t('candidates.table.snr')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {candidate.detections.map((d) => {
-            const idx = indexOf(d.observationId)
-            return (
-              <tr
-                key={d.observationId}
-                className={d.observationId === activeObservationId ? 'active' : ''}
-                onClick={() => idx >= 0 && onSelectObservation(idx)}
-              >
-                <td>{idx + 1}</td>
-                <td>{formatTimestamp(d.timestamp).slice(0, 10)}</td>
-                <td>
-                  {d.x.toFixed(1)}, {d.y.toFixed(1)}
-                </td>
-                <td>{d.snr?.toFixed(1) ?? '—'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      {Number.isFinite(candidate.ra) && Number.isFinite(candidate.dec) && (
+        <div className="row gap wrap">
+          <a className="chip" href={simbadUrl(candidate.ra, candidate.dec)} target="_blank" rel="noreferrer">
+            SIMBAD ↗
+          </a>
+        </div>
+      )}
     </section>
   )
 }

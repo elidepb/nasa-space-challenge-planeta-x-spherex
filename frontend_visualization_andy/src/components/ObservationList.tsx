@@ -25,9 +25,12 @@ export function ObservationList({ observations, activeIndex, referenceId, onSele
               <button className={`obs-item ${i === activeIndex ? 'active' : ''}`} onClick={() => onSelect(i)}>
                 <span className="obs-index">{i + 1}</span>
                 <span className="obs-main">
-                  <span className="obs-date">{formatTimestamp(o.timestamp)}</span>
+                  <span className="obs-date">
+                    {o.timestamp ? formatTimestamp(o.timestamp) : o.id}
+                  </span>
                   <span className="muted small">
                     {t('observations.detector', { d: o.detector })} · {o.wavelength?.toFixed(3) ?? '—'} {o.spectral_unit}
+                    {typeof o.metadata?.survey_index === 'number' ? ` · survey ${o.metadata.survey_index}` : ''}
                   </span>
                 </span>
                 {o.id === referenceId && <span className="tag">{t('observations.reference')}</span>}

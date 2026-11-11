@@ -3,22 +3,13 @@ import { API_MODE, setMockScenario, type MockScenario } from '../api'
 import type { MessageKey } from '../i18n'
 import { useI18n } from '../i18n/I18nProvider'
 import {
-  bandIndexFromParts,
   CHALLENGE_TARGETS,
   DEFAULT_BAND_INDEX,
   normalizeBands,
   primaryFromBands,
-  SPECTRAL_FEATURES,
-  type SpectralFeatureId,
 } from '../lib/spectral'
 import type { RegionQuery } from '../types/contracts'
 import { SpectralBandPicker } from './SpectralBandPicker'
-
-const DEMO_PRESETS: { label: MessageKey; query: RegionQuery }[] = [
-  { label: 'search.presets.m101', query: { ra: 210.80227, dec: 54.34895, size: 0.05 } },
-  { label: 'search.presets.nep', query: { ra: 270.0, dec: 66.56071, size: 0.05 } },
-  { label: 'search.presets.sep', query: { ra: 90.0, dec: -66.56071, size: 0.05 } },
-]
 
 const SCENARIOS: MockScenario[] = ['normal', 'slow', 'empty', 'error']
 
@@ -29,29 +20,17 @@ interface Props {
   onSubmit: (query: RegionQuery) => void
   /** Consulta lanzada desde fuera (URL compartida, intro) para reflejarla en el formulario. */
   externalQuery: RegionQuery | null
-  /** Capas IR activas en el visor. */
-  activeFeatures: SpectralFeatureId[]
-  /** Hay capas disponibles (tras un análisis). */
-  layersAvailable: boolean
-  onToggleFeature: (id: SpectralFeatureId) => void
 }
 
 function bandsFromQuery(q: RegionQuery): number[] {
   return normalizeBands(q.bands, q.bandpass, q.group)
 }
 
-export function SearchPanel({
-  busy,
-  onSubmit,
-  externalQuery,
-  activeFeatures,
-  layersAvailable,
-  onToggleFeature,
-}: Props) {
+export function SearchPanel({ busy, onSubmit, externalQuery }: Props) {
   const { t } = useI18n()
-  const [ra, setRa] = useState('210.80227')
-  const [dec, setDec] = useState('54.34895')
-  const [size, setSize] = useState('0.05')
+  const [ra, setRa] = useState(String(CHALLENGE_TARGETS[0].query.ra))
+  const [dec, setDec] = useState(String(CHALLENGE_TARGETS[0].query.dec))
+  const [size, setSize] = useState(String(CHALLENGE_TARGETS[0].query.size))
   const [qr, setQr] = useState('qr2')
   const [bands, setBands] = useState<number[]>([DEFAULT_BAND_INDEX])
   const [scenario, setScenario] = useState<MockScenario>('normal')
@@ -93,16 +72,6 @@ export function SearchPanel({
     setBands(bandsFromQuery(q))
   }
 
-  function toggleFeature(id: SpectralFeatureId) {
-    const feat = SPECTRAL_FEATURES.find((f) => f.id === id)
-    const turningOn = !activeFeatures.includes(id)
-    if (turningOn && feat) {
-      const idx = bandIndexFromParts(feat.bandpass, feat.group)
-      setBands((cur) => normalizeBands([...cur, idx]))
-    }
-    onToggleFeature(id)
-  }
-
   return (
     <form className="panel search" onSubmit={submit}>
       <h2 className="panel-title">{t('search.title')}</h2>
@@ -132,34 +101,6 @@ export function SearchPanel({
 
       <SpectralBandPicker selected={bands} disabled={busy} onChange={setBands} />
 
-      <div className="feature-layers" role="group" aria-label={t('search.layersTitle')}>
-        <div className="feature-layers-head">
-          <span className="feature-jumps-label">{t('search.layersTitle')}</span>
-          <p className="muted small" style={{ margin: 0 }}>
-            {layersAvailable ? t('search.layersHint') : t('search.layersNeedAnalysis')}
-          </p>
-        </div>
-        <div className="feature-jumps">
-          {SPECTRAL_FEATURES.map((f) => {
-            const on = activeFeatures.includes(f.id)
-            return (
-              <button
-                key={f.id}
-                type="button"
-                className={`chip feature-chip feature-${f.id} ${on ? 'active' : ''}`}
-                disabled={!layersAvailable}
-                aria-pressed={on}
-                title={t(`search.features.${f.id}Hint`)}
-                onClick={() => toggleFeature(f.id)}
-              >
-                {on ? '✓ ' : ''}
-                {t(`search.features.${f.id}`)}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
       <div className="presets-block">
         <span className="presets-label">{t('search.challengeTargets')}</span>
         <div className="presets">
@@ -168,21 +109,10 @@ export function SearchPanel({
               type="button"
               key={p.id}
               className="chip challenge"
-              title={`${p.query.ra.toFixed(4)}°, ${p.query.dec.toFixed(4)}°`}
+              title={`${p.query.ra.toFixed(4)}°, ${p.query.dec.toFixed(4)}° · ${p.query.bandpass} · g${p.query.group}`}
               onClick={() => applyPreset(p.query)}
             >
               {t(p.labelKey as MessageKey)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="presets-block">
-        <span className="presets-label">{t('search.demoTargets')}</span>
-        <div className="presets">
-          {DEMO_PRESETS.map((p) => (
-            <button type="button" key={p.label} className="chip" onClick={() => applyPreset(p.query)}>
-              {t(p.label)}
             </button>
           ))}
         </div>

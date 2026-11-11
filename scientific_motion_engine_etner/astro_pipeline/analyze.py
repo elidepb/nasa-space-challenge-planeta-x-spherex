@@ -13,7 +13,6 @@ from astro_pipeline.difference import snr_difference
 from astro_pipeline.kinematics import candidate_from_dipole
 from astro_pipeline.match_dipoles import match_moving_dipoles
 from astro_pipeline.normalize import normalize_background
-from astro_pipeline.pair_wavelength import group_comparable_epochs
 from astro_pipeline.read_observation import ensure_spatial_wcs, read_scientific_arrays
 from astro_pipeline.subtract_zodi import subtract_zodi
 
@@ -36,19 +35,21 @@ def analyze_observations(
         return AnalysisResult(candidates=[], diagnostics=diagnostics).to_dict()
 
     observations = [ensure_spatial_wcs(obs) for obs in observations]
+    usable = [obs for obs in observations if obs.image is not None and obs.wcs() is not None]
+    if len(usable) < 2:
+        return AnalysisResult(candidates=[], diagnostics=diagnostics).to_dict()
+    usable.sort(key=lambda obs: str(obs.timestamp))
 
     found = []
-    groups = group_comparable_epochs(observations)
-    diagnostics.comparable_groups = len(groups)
-    for group in groups:
-        group_candidates, group_diag = _analyze_group(
-            group,
-            snr_threshold=snr_threshold,
-            min_step_pixels=min_step_pixels,
-            max_step_pixels=max_step,
-        )
-        found.extend(group_candidates)
-        diagnostics.merge(group_diag)
+    diagnostics.comparable_groups = 1
+    group_candidates, group_diag = _analyze_group(
+        usable,
+        snr_threshold=snr_threshold,
+        min_step_pixels=min_step_pixels,
+        max_step_pixels=max_step,
+    )
+    found.extend(group_candidates)
+    diagnostics.merge(group_diag)
 
     found.sort(key=lambda cand: cand.snr, reverse=True)
     found = found[:max_candidates]

@@ -1,29 +1,29 @@
 /**
- * Contratos compartidos con el backend.
+ * Contratos de UI. Wire HTTP real en `api/spectralAnalysis.ts`
+ * (doc: `backend_api_integration_anghelo/README.md`):
  *
- * `ObservationSummary` replica `Observation.to_summary()` del pipeline de Elide
- * (spherex_data_pipeline_elide/spherex_pipeline/models.py). Las matrices
- * científicas no viajan en JSON: el front solo recibe URLs de imágenes ya
- * renderizadas mediante `GET /analysis/{id}/images`.
+ *   POST /api/v1/spectral-analyses
+ *     { ra, dec, size_deg, bandpass, spectral_group }
+ *   → 202 { session_id, estado, message, spectral_group, observaciones[] }
+ *
+ *   GET  /api/v1/spectral-analyses/{id}
+ *   GET  …/observations | …/images | …/candidates
  */
 
 export interface RegionQuery {
   ra: number
   dec: number
-  /** Lado del cutout en grados (igual que `size` en get_observations). */
+  /** Lado del cutout en grados → wire `size_deg`. */
   size: number
   qr?: string
-  /** Detector SPHEREx: SPHEREx-D1 … SPHEREx-D6 (banda primaria / compat). */
+  /** Detector SPHEREx: SPHEREx-D1 … SPHEREx-D6 → wire `bandpass`. */
   bandpass?: string
   /**
-   * Canal espectral 1–17 dentro del detector (mismo `group` que
-   * `get_observations(..., group=)` de Elide). Default del pipeline: 7.
+   * Canal espectral 1–17 → wire `spectral_group`.
+   * Mismo `group` que Elide. Default del backend: 5; UI default: 7.
    */
   group?: number
-  /**
-   * Selección múltiple de bandas globales 1–102
-   * (6 detectores × 17 canales). La primera es la primaria.
-   */
+  /** Banda global 1–102 (solo 1; el API usa bandpass + spectral_group). */
   bands?: number[]
 }
 

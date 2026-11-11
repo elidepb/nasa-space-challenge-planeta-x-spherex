@@ -177,21 +177,28 @@ src/
 
 ## Contrato que el front espera del backend (para Anghelo)
 
-Tipos exactos en `src/types/contracts.ts`.
+Doc canónica: `backend_api_integration_anghelo/README.md`.
+Adaptador: `src/api/spectralAnalysis.ts` + `src/api/httpApi.ts`.
 
-| Endpoint | Respuesta |
+| Endpoint | Request / respuesta |
 | --- | --- |
-| `POST /analysis` body `{ra, dec, size, qr, bandpass}` | `AnalysisInfo` |
-| `GET /analysis/{id}` | `AnalysisInfo` (el front hace polling cada 600 ms) |
-| `GET /analysis/{id}/observations` | `ObservationSummary[]` = `Observation.to_summary()` de Elide, en orden cronológico |
-| `GET /analysis/{id}/candidates` | `Candidate[]` |
-| `GET /analysis/{id}/images` | `AnalysisImages` |
-| `GET /analysis/{id}/known-objects` *(propuesto, opcional)* | `KnownObject[]`; si devuelve 404 el front lo trata como lista vacía |
+| `POST /api/v1/spectral-analyses` | body `{ra, dec, size_deg, bandpass, spectral_group}` → **202** `{session_id, estado, message, spectral_group, observaciones[]}` |
+| `GET /api/v1/spectral-analyses/{session_id}` | `{estado, progreso_porcentaje, …}` (polling ~1 s) |
+| `GET …/observations` | `ObservationSummarySchema[]` |
+| `GET …/images` | `{imagenes:[{obs_id, preview_png_url, …}]}` → epochs del visor |
+| `GET …/candidates` | `{pairs:[{candidatos:[…]}]}` aplanado a `Candidate[]` |
+
+Para usar el backend real:
+
+```env
+VITE_API_MODE=http
+VITE_API_URL=http://localhost:8000
+```
 
 ```json
-// AnalysisInfo
-{ "id": "A-0001", "status": "pending|processing|completed|error",
-  "region": {"ra": 210.80227, "dec": 54.34895, "size": 0.05, "qr": "qr2", "bandpass": "SPHEREx-D2"},
+// AnalysisInfo (ya mapeado en el cliente)
+{ "id": "a1b2…", "status": "pending|processing|completed|error",
+  "region": {"ra": 210.80227, "dec": 54.34895, "size": 0.05, "bandpass": "SPHEREx-D2", "group": 5},
   "createdAt": "2026-09-30T12:00:00Z", "progress": 0.4, "message": "…", "error": null }
 
 // Candidate (x, y = píxel en la cuadrícula común del análisis, origen arriba-izquierda)

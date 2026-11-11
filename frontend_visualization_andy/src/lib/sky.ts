@@ -16,6 +16,23 @@ export function pixelToSky(
   return { ra: (ra + 360) % 360, dec }
 }
 
+/** Inversa de pixelToSky para anclar candidatos que solo traen RA/Dec. */
+export function skyToPixel(
+  region: Pick<RegionQuery, 'ra' | 'dec'>,
+  pixelScaleArcsec: number,
+  width: number,
+  height: number,
+  ra: number,
+  dec: number,
+) {
+  const cx = (width - 1) / 2
+  const cy = (height - 1) / 2
+  const cosDec = Math.cos((region.dec * Math.PI) / 180) || 1
+  const x = cx - ((ra - region.ra) * 3600 * cosDec) / pixelScaleArcsec
+  const y = cy - ((dec - region.dec) * 3600) / pixelScaleArcsec
+  return { x, y }
+}
+
 export function formatRaHms(raDeg: number) {
   const [hh, mm, ss] = sexagesimal(raDeg / 15, 2)
   return `${String(hh).padStart(2, '0')}h ${String(mm).padStart(2, '0')}m ${ss.toFixed(2).padStart(5, '0')}s`

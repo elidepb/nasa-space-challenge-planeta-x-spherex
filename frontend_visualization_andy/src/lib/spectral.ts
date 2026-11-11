@@ -17,6 +17,8 @@ export type Bandpass = (typeof BANDPASSES)[number]
 export const N_SPECTRAL_GROUPS = 17
 /** 6 detectores × 17 canales = 102 bandas SPHEREx. */
 export const TOTAL_BANDS = BANDPASSES.length * N_SPECTRAL_GROUPS
+/** El API solo acepta una banda (bandpass + spectral_group). */
+export const MAX_SELECTED_BANDS = 1
 export const DEFAULT_BANDPASS: Bandpass = 'SPHEREx-D2'
 export const DEFAULT_SPECTRAL_GROUP = 7
 /** Índice global 1–102 del default (D2 · canal 7). */
@@ -121,6 +123,7 @@ export function normalizeBands(
     .map((b) => clampBandIndex(b))
     .filter((b, i, arr) => arr.indexOf(b) === i)
     .sort((a, b) => a - b)
+    .slice(0, MAX_SELECTED_BANDS)
   if (raw.length > 0) return raw
   return [bandIndexFromParts(normalizeBandpass(fallbackBandpass), clampSpectralGroup(fallbackGroup))]
 }
@@ -189,36 +192,49 @@ export const SPECTRAL_FEATURES: SpectralFeature[] = [
   },
 ]
 
-/** Targets de prueba del challenge Planet X / SPHEREx (coords J2000). */
+/**
+ * Presets con cobertura SPHEREx real (QR2).
+ * - Vesta/Ceres: efemérides Horizons ≈2025-08-15 + visitas TAP IRSA (MOST tutorial).
+ * - Resto: challenge (`challenge_targets/summary.json`, D2·g7).
+ */
 export const CHALLENGE_TARGETS: {
   id: string
   labelKey: string
   query: { ra: number; dec: number; size: number; bandpass?: Bandpass; group?: number }
 }[] = [
   {
+    id: 'vesta',
+    labelKey: 'search.presets.vesta',
+    query: { ra: 226.1682, dec: -13.5529, size: 0.85, bandpass: 'SPHEREx-D6', group: 7 },
+  },
+  {
+    id: 'ceres',
+    labelKey: 'search.presets.ceres',
+    query: { ra: 20.3625, dec: -6.2014, size: 0.85, bandpass: 'SPHEREx-D6', group: 7 },
+  },
+  {
     id: 'wise0855',
     labelKey: 'search.presets.wise0855',
-    // WISE 0855−0714 — brown dwarf del “first hour”
-    query: { ra: 133.795, dec: -7.24514, size: 0.05, bandpass: 'SPHEREx-D2', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 133.795129, dec: -7.245147, size: 0.85, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'barnard',
     labelKey: 'search.presets.barnard',
-    query: { ra: 269.45208, dec: 4.69339, size: 0.05, bandpass: 'SPHEREx-D2', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 269.452076, dec: 4.693391, size: 0.85, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'epsIndiB',
     labelKey: 'search.presets.epsIndiB',
-    query: { ra: 331.072, dec: -56.7859, size: 0.05, bandpass: 'SPHEREx-D3', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 331.043833, dec: -56.782694, size: 0.85, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'rwAur',
     labelKey: 'search.presets.rwAur',
-    query: { ra: 76.95653, dec: 30.40144, size: 0.05, bandpass: 'SPHEREx-D4', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 76.956417, dec: 30.401408, size: 0.85, bandpass: 'SPHEREx-D2', group: 7 },
   },
   {
     id: 'rDra',
     labelKey: 'search.presets.rDra',
-    query: { ra: 268.13958, dec: 61.53, size: 0.05, bandpass: 'SPHEREx-D5', group: DEFAULT_SPECTRAL_GROUP },
+    query: { ra: 248.167625, dec: 66.754444, size: 0.85, bandpass: 'SPHEREx-D2', group: 7 },
   },
 ]
