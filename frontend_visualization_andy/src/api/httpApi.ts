@@ -100,7 +100,7 @@ export function createHttpApi(baseUrl: string): SpherexApi {
     async getAnalysis(id) {
       const cached = sessions.get(id)
       const wire = await request<SessionStatusWire>(sessionPath(id))
-      const region = cached?.region ?? { ra: 0, dec: 0, size: 0.05 }
+      const region = cached?.region ?? { ra: 0, dec: 0, size: 0.85 }
       const createdAt = cached?.createdAt ?? new Date().toISOString()
       const info = mapStatusToAnalysisInfo(wire, region, createdAt)
       putCache(id, { region, info, createdAt, observations: cached?.observations })
@@ -110,7 +110,7 @@ export function createHttpApi(baseUrl: string): SpherexApi {
     async getObservations(id) {
       const cached = sessions.get(id)
       const wire = await request<ObservationWire[]>(sessionPath(id, 'observations'))
-      const region = cached?.region ?? { ra: 0, dec: 0, size: 0.05 }
+      const region = cached?.region ?? { ra: 0, dec: 0, size: 0.85 }
       const observations = mapObservaciones(wire, region)
       if (cached) putCache(id, { ...cached, observations })
       return observations

@@ -268,7 +268,13 @@ export function SkyViewer(props: Props) {
               alt={t('viewer.alt')}
               draggable={false}
               className={`viewer-image crossfade-in ${outgoingUrl ? (fadeActive ? 'is-visible' : 'is-hidden') : 'is-visible'}`}
-              style={{ filter: props.imageFilter }}
+              style={{
+                filter: props.imageFilter,
+                // En swipe: la época B queda a la derecha; la A (compare) a la izquierda.
+                ...(compareUrl
+                  ? { clipPath: `inset(0 0 0 ${Math.min(100, Math.max(0, splitContent))}%)` }
+                  : null),
+              }}
             />
           )}
           {outgoingUrl && (
@@ -287,7 +293,10 @@ export function SkyViewer(props: Props) {
               alt=""
               draggable={false}
               className="viewer-image compare"
-              style={{ filter: props.imageFilter, clipPath: `inset(0 ${Math.max(0, 100 - splitContent)}% 0 0)` }}
+              style={{
+                filter: props.imageFilter,
+                clipPath: `inset(0 ${Math.max(0, 100 - splitContent)}% 0 0)`,
+              }}
             />
           )}
           {(props.featureLayers ?? [])
@@ -342,10 +351,18 @@ export function SkyViewer(props: Props) {
             {props.showOverlays &&
               candidates.map((c) => {
                 const selected = c.id === selectedCandidateId
-                const current = c.detections.find((d) => d.observationId === activeObservationId)
-                const anchor = current ?? c.detections[0]
-                // El API a veces manda candidatos sin detections → no tumbar toda la UI.
-                if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) return null
+                // Preferir detection de la época activa; si el wire mezcló ids, usar la 1ª válida.
+                const current =
+                  (activeObservationId
+                    ? c.detections.find((d) => d.observationId === activeObservationId)
+                    : null) ??
+                  c.detections.find((d) => Number.isFinite(d.x) && Number.isFinite(d.y))
+                if (!current || !Number.isFinite(current.x) || !Number.isFinite(current.y)) return null
+                // Si no hay match de época, no inventar track en el vacío.
+                const onThisEpoch = Boolean(
+                  activeObservationId && c.detections.some((d) => d.observationId === activeObservationId),
+                )
+                if (activeObservationId && !onThisEpoch) return null
                 return (
                   <g
                     key={c.id}
@@ -362,8 +379,8 @@ export function SkyViewer(props: Props) {
                         ))}
                       </>
                     )}
-                    <circle className={`cand-marker ${current ? '' : 'absent'}`} cx={anchor.x + 0.5} cy={anchor.y + 0.5} r={markerR} />
-                    <text x={anchor.x + 0.5 + markerR * 1.2} y={anchor.y + 0.5 - markerR * 1.1} fontSize={fontSize} className="cand-label">
+                    <circle className="cand-marker" cx={current.x + 0.5} cy={current.y + 0.5} r={markerR} />
+                    <text x={current.x + 0.5 + markerR * 1.2} y={current.y + 0.5 - markerR * 1.1} fontSize={fontSize} className="cand-label">
                       {c.id}
                     </text>
                   </g>
@@ -386,9 +403,10 @@ export function SkyViewer(props: Props) {
               className="split-handle"
               style={{ left: `${split * 100}%` }}
               onPointerDown={(e) => {
+                e.preventDefault()
                 e.stopPropagation()
-                ;(e.currentTarget.parentElement as HTMLElement).setPointerCapture(e.pointerId)
                 splitDrag.current = true
+                stageRef.current?.setPointerCapture(e.pointerId)
               }}
             >
               <span>⇔</span>

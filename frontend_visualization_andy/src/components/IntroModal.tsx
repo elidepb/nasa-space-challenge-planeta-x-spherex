@@ -78,14 +78,9 @@ export function IntroModal({ onClose, onStartExploring, onOpenGuide }: Props) {
       body: (
         <div className="tool-cards">
           <div className="tool-card">
-            <span className="tool-icon">◑</span>
-            <strong>{t('modes.blink')}</strong>
-            <p className="small muted">{t('intro.toolBlink')}</p>
-          </div>
-          <div className="tool-card">
-            <span className="tool-icon">±</span>
-            <strong>{t('modes.difference')}</strong>
-            <p className="small muted">{t('intro.toolDifference')}</p>
+            <span className="tool-icon">▣</span>
+            <strong>{t('modes.original')}</strong>
+            <p className="small muted">{t('intro.toolOriginal')}</p>
           </div>
           <div className="tool-card">
             <span className="tool-icon">⇔</span>

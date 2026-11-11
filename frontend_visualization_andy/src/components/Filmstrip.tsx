@@ -19,7 +19,8 @@ export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, o
   }, [activeIndex])
 
   if (observations.length === 0) return null
-  const urlFor = (id: string) => epochs.find((e) => e.observationId === id)?.url
+  const urlFor = (id: string, i: number) =>
+    epochs.find((e) => e.observationId === id)?.url ?? epochs[i]?.url
 
   return (
     <div className="filmstrip" role="listbox" aria-label={t('filmstrip.label')}>
@@ -33,7 +34,7 @@ export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, o
           role="option"
           aria-selected={i === activeIndex}
         >
-          {urlFor(o.id) && <img src={urlFor(o.id)} alt="" draggable={false} />}
+          {urlFor(o.id, i) && <img src={urlFor(o.id, i)!} alt="" draggable={false} />}
           <span className="thumb-n">{i + 1}</span>
           {i === referenceIndex && <span className="thumb-tag">{t('observations.reference')}</span>}
         </button>

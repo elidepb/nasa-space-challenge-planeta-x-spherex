@@ -23,10 +23,7 @@ export interface RegionQuery {
    * Mismo `group` que Elide. Default del backend: 5; UI default: 7.
    */
   group?: number
-  /**
-   * Selección múltiple de bandas globales 1–102 (máx. 3 en UI).
-   * La primera es la primaria enviada al backend.
-   */
+  /** Banda global 1–102 (solo 1; el API usa bandpass + spectral_group). */
   bands?: number[]
 }
 

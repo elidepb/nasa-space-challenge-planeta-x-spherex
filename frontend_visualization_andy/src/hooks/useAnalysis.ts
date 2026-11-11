@@ -110,12 +110,25 @@ export function useAnalysis() {
         api.getKnownObjects(info.id),
       ])
       if (!alive()) return
-      const withDemo = fillDemoCandidatesIfEmpty(candidatesRaw, observations, images, info.region)
-      const candidates = ensureCandidateAnchors(withDemo, observations, images, info.region)
+      // Escala real del cutout (el wire hardcodeaba 6.2″/px).
+      const sizeDeg = info.region.size || 0.05
+      const w = finiteOr(images.width, 64)
+      const imagesScaled: AnalysisImages = {
+        ...images,
+        pixelScaleArcsec: w > 0 ? (sizeDeg * 3600) / w : images.pixelScaleArcsec,
+      }
+      // TEMP VIDEO: sustituye candidatos del API (coords malas) por marcas en manchas blancas.
+      const withDemo = await fillDemoCandidatesIfEmpty(candidatesRaw, observations, imagesScaled, info.region)
+      if (!alive()) return
+      // Si el demo generó marcas, no re-proyectar por RA/Dec (rompe el ancla al PNG).
+      const candidates =
+        withDemo !== candidatesRaw
+          ? withDemo
+          : ensureCandidateAnchors(withDemo, observations, imagesScaled, info.region)
       setState({
         phase: 'completed',
         info,
-        result: { analysis: info, observations, candidates, images, knownObjects },
+        result: { analysis: info, observations, candidates, images: imagesScaled, knownObjects },
         error: null,
       })
     } catch (err) {

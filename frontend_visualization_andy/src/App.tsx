@@ -27,18 +27,21 @@ import { SPECTRAL_FEATURES, type SpectralFeatureId } from './lib/spectral'
 import { readUrlState, VIEW_MODES, writeUrlState, type UrlState, type ViewMode } from './lib/urlState'
 import type { KnownObject, RegionQuery } from './types/contracts'
 
+const MODE_ICON: Record<ViewMode, string> = { original: '▣', swipe: '⇔' }
+
 const SPEEDS = [
-  { label: '0.5×', stepMs: 2200, blinkMs: 1000 },
-  { label: '1×', stepMs: 1400, blinkMs: 500 },
-  { label: '2×', stepMs: 900, blinkMs: 250 },
+  { label: '0.5×', stepMs: 1600 },
+  { label: '1×', stepMs: 800 },
+  { label: '2×', stepMs: 400 },
 ]
+
 const INTRO_KEY = 'spherex.introSeen'
 const ENTERED_KEY = 'spherex.entered'
 /** Primer target con datos verificados (WISE 0855 · D2 · canal 7). */
 const DEMO_QUERY: RegionQuery = {
   ra: 133.795129,
   dec: -7.245147,
-  size: 0.05,
+  size: 0.85,
   qr: 'qr2',
   bandpass: 'SPHEREx-D2',
   group: 7,
@@ -54,8 +57,6 @@ function alreadyEntered() {
 }
 
 type ModalName = 'intro' | 'guide' | 'help' | 'about' | null
-
-const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
 function introAlreadySeen() {
   try {
@@ -83,13 +84,13 @@ export default function App() {
   const [externalQuery, setExternalQuery] = useState<RegionQuery | null>(initialUrl.query)
   const [activeIndex, setActiveIndex] = useState(0)
   const [referenceIndex, setReferenceIndex] = useState(0)
-  const [mode, setMode] = useState<ViewMode>('original')
+  const [mode, setMode] = useState<ViewMode>(initialUrl.mode ?? 'original')
   const [playing, setPlaying] = useState(false)
-  const [speedLevel, setSpeedLevel] = useState(prefersReducedMotion() ? 0 : 1)
-  const [blinkOnRef, setBlinkOnRef] = useState(false)
+  const [speedLevel, setSpeedLevel] = useState(1)
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const [showOverlays, setShowOverlays] = useState(true)
-  const [showTrajectories, setShowTrajectories] = useState(true)
+  // Off: los puntos verdes de otras épocas se veían como “marcas sueltas” al lado del círculo.
+  const [showTrajectories, setShowTrajectories] = useState(false)
   const [showKnown, setShowKnown] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [activeFeatures, setActiveFeatures] = useState<SpectralFeatureId[]>([])
@@ -117,14 +118,13 @@ export default function App() {
   useEffect(() => {
     if (!result) return
     const n = observations.length
-    const refId = images?.differences[0]?.referenceId
-    setReferenceIndex(Math.max(0, refId ? observations.findIndex((o) => o.id === refId) : 0))
+    setReferenceIndex(0)
     setPlaying(false)
     const pending = pendingView.current
     pendingView.current = null
     if (pending) {
-      setMode(pending.mode ?? 'original')
-      setActiveIndex(Math.min(n - 1, Math.max(0, pending.epoch ?? n - 1)))
+      setMode(pending.mode === 'swipe' ? 'swipe' : 'original')
+      setActiveIndex(Math.min(n - 1, Math.max(0, pending.epoch ?? (n > 1 ? n - 1 : 0))))
       setSelectedCandidateId(candidates.some((c) => c.id === pending.candidate) ? pending.candidate! : null)
     } else {
       setActiveIndex(n > 1 ? n - 1 : 0)
@@ -142,10 +142,9 @@ export default function App() {
     })
   }, [lastQuery, mode, activeIndex, selectedCandidateId, result])
 
-  // Precarga de imágenes para que el blink no espere a la red.
   useEffect(() => {
     if (!images) return
-    for (const url of [...images.epochs.map((e) => e.url), ...images.differences.map((d) => d.url)]) {
+    for (const url of images.epochs.map((e) => e.url)) {
       new Image().src = url
     }
   }, [images])
@@ -155,39 +154,22 @@ export default function App() {
     images.epochs.forEach((e) => void processImage(e.url, imageSettings).catch(() => undefined))
   }, [images, imageSettings])
 
-  const differenceFor = useCallback(
-    (index: number) => images?.differences.find((d) => d.observationId === observations[index]?.id) ?? null,
-    [images, observations],
-  )
-
   const step = useCallback(
     (delta: number) => {
       const n = observations.length
       if (n === 0) return
-      setActiveIndex((i) => {
-        let next = (i + delta + n) % n
-        if (mode === 'difference') {
-          for (let tries = 0; tries < n && !differenceFor(next); tries++) next = (next + delta + n) % n
-        }
-        return next
-      })
+      setActiveIndex((i) => (i + delta + n) % n)
     },
-    [observations.length, mode, differenceFor],
+    [observations.length],
   )
 
-  const speed = SPEEDS[speedLevel]
-  useEffect(() => {
-    if (!playing) return
-    const id =
-      mode === 'blink'
-        ? setInterval(() => setBlinkOnRef((b) => !b), speed.blinkMs)
-        : setInterval(() => step(1), speed.stepMs)
-    return () => clearInterval(id)
-  }, [playing, mode, speed, step])
+  const speed = SPEEDS[speedLevel] ?? SPEEDS[1]
 
   useEffect(() => {
-    if (mode !== 'blink') setBlinkOnRef(false)
-  }, [mode])
+    if (!playing || observations.length < 2) return
+    const id = window.setInterval(() => step(1), speed.stepMs)
+    return () => window.clearInterval(id)
+  }, [playing, speed.stepMs, step, observations.length])
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen()
@@ -201,15 +183,13 @@ export default function App() {
       const key = e.key.toLowerCase()
       if (e.key === '?') return setModal('help')
       if (observations.length === 0) return
-      if (e.key === 'ArrowRight') step(1)
-      else if (e.key === 'ArrowLeft') step(-1)
-      else if (e.key === ' ') {
+      if (e.key === ' ') {
         e.preventDefault()
-        setPlaying((p) => !p)
-      } else if (key === 'o') setMode('original')
-      else if (key === 'b') setMode('blink')
-      else if (key === 'd') setMode('difference')
-      else if (key === 's') setMode('swipe')
+        if (observations.length > 1) setPlaying((p) => !p)
+      } else if (e.key === 'ArrowRight') step(1)
+      else if (e.key === 'ArrowLeft') step(-1)
+      else if (key === 'o') setMode('original')
+      else if (key === 's' && observations.length > 1) setMode('swipe')
       else if (key === 'g') setShowGrid((v) => !v)
       else if (key === 'k') setShowKnown((v) => !v)
       else if (key === 'f') toggleFullscreen()
@@ -219,47 +199,43 @@ export default function App() {
   }, [step, observations.length, modal, toggleFullscreen])
 
   const epochUrl = useCallback(
-    (i: number) => images?.epochs.find((e) => e.observationId === observations[i]?.id)?.url ?? null,
+    (i: number) => {
+      if (!images?.epochs?.length) return null
+      const obs = observations[i]
+      if (obs) {
+        const byId = images.epochs.find((e) => e.observationId === obs.id)?.url
+        if (byId) return byId
+      }
+      // Fallback: obs_id (images) ≠ id_exposicion (observations) en el wire.
+      return images.epochs[i]?.url ?? null
+    },
     [images, observations],
   )
+
+  const canSwipe = observations.length > 1
+  const swipeOn = mode === 'swipe' && canSwipe
 
   const view = useMemo(() => {
     if (!images || observations.length === 0) return null
     const epochLabel = (i: number) => t('badge.epochN', { n: i + 1 })
-    if (mode === 'blink') {
-      const i = blinkOnRef ? referenceIndex : activeIndex
-      return {
-        url: epochUrl(i),
-        colorApplicable: true,
-        displayedIndex: i,
-        badge: t('badge.blink', { frame: blinkOnRef ? 'A' : 'B', n: i + 1 }) + (i === referenceIndex ? t('badge.blinkRef') : ''),
-      }
-    }
-    if (mode === 'difference') {
-      const diff = differenceFor(activeIndex)
-      if (!diff) {
-        return { url: epochUrl(activeIndex), colorApplicable: true, displayedIndex: activeIndex, badge: t('badge.referenceNoDiff') }
-      }
-      const refIdx = observations.findIndex((o) => o.id === diff.referenceId)
-      return {
-        url: diff.url,
-        colorApplicable: false,
-        displayedIndex: activeIndex,
-        badge: t('badge.difference', { n: activeIndex + 1, ref: refIdx + 1 }),
-      }
-    }
-    if (mode === 'swipe') {
+    if (swipeOn) {
+      const ref = referenceIndex === activeIndex ? (activeIndex === 0 ? Math.min(1, observations.length - 1) : 0) : referenceIndex
       return {
         url: epochUrl(activeIndex),
-        compareUrl: epochUrl(referenceIndex),
-        compareLabels: [`A · ${epochLabel(referenceIndex)}`, `B · ${epochLabel(activeIndex)}`] as [string, string],
+        compareUrl: epochUrl(ref),
+        compareLabels: [`A · ${epochLabel(ref)}`, `B · ${epochLabel(activeIndex)}`] as [string, string],
         colorApplicable: true,
         displayedIndex: activeIndex,
-        badge: t('badge.swipe', { ref: referenceIndex + 1, n: activeIndex + 1 }),
+        badge: t('badge.swipe', { ref: ref + 1, n: activeIndex + 1 }),
       }
     }
-    return { url: epochUrl(activeIndex), colorApplicable: true, displayedIndex: activeIndex, badge: t('badge.original', { n: activeIndex + 1 }) }
-  }, [images, observations, mode, blinkOnRef, activeIndex, referenceIndex, differenceFor, epochUrl, t])
+    return {
+      url: epochUrl(activeIndex),
+      colorApplicable: true,
+      displayedIndex: activeIndex,
+      badge: t('badge.original', { n: activeIndex + 1 }),
+    }
+  }, [images, observations, swipeOn, activeIndex, referenceIndex, epochUrl, t])
 
   const baseUrl = useProcessedImage(view?.url ?? null, imageSettings, view?.colorApplicable ?? false)
   const compareUrl = useProcessedImage(view?.compareUrl ?? null, imageSettings, true)
@@ -290,21 +266,10 @@ export default function App() {
     try {
       const label = (i: number) => `${t('badge.epochN', { n: i + 1 })} · ${formatTimestamp(observations[i].timestamp).slice(0, 10)}`
       const processed = async (url: string) => (isDefaultSettings(imageSettings) ? url : processImage(url, imageSettings))
-      let frames: GifFrame[]
-      if (mode === 'blink' || mode === 'swipe') {
-        frames = await Promise.all(
-          [referenceIndex, activeIndex].map(async (i) => ({ url: await processed(epochUrl(i)!), label: label(i) })),
-        )
-      } else if (mode === 'difference') {
-        frames = images.differences.map((d) => {
-          const i = observations.findIndex((o) => o.id === d.observationId)
-          return { url: d.url, label: `${t('modes.difference')} · ${label(i)}` }
-        })
-      } else {
-        frames = await Promise.all(observations.map(async (_, i) => ({ url: await processed(epochUrl(i)!), label: label(i) })))
-      }
-      const delay = mode === 'blink' || mode === 'swipe' ? speed.blinkMs : speed.stepMs
-      await exportGif(frames, delay, `spherex_${lastQuery.ra}_${lastQuery.dec}_${mode}.gif`, t('app.title'))
+      const frames: GifFrame[] = await Promise.all(
+        observations.map(async (_, i) => ({ url: await processed(epochUrl(i)!), label: label(i) })),
+      )
+      await exportGif(frames, 900, `spherex_${lastQuery.ra}_${lastQuery.dec}.gif`, t('app.title'))
       showToast(t('toolbar.gifReady'))
     } catch {
       showToast(t('toolbar.gifError'))
@@ -326,10 +291,7 @@ export default function App() {
     closeIntro()
     setExternalQuery({ ...DEMO_QUERY })
     runSearch(DEMO_QUERY)
-    setMode('original')
   }
-
-  const modeIcon: Record<ViewMode, string> = { original: '▣', blink: '◑', difference: '±', swipe: '⇔' }
 
   if (!entered) {
     return (
@@ -400,8 +362,14 @@ export default function App() {
         <div className="toolbar">
           <div className="segmented">
             {VIEW_MODES.map((m) => (
-              <button key={m} className={mode === m ? 'active' : ''} onClick={() => setMode(m)} disabled={!view}>
-                <span className="mode-icon">{modeIcon[m]}</span> {t(`modes.${m}`)}
+              <button
+                key={m}
+                className={mode === m ? 'active' : ''}
+                onClick={() => setMode(m)}
+                disabled={!view || (m === 'swipe' && !canSwipe)}
+                title={m === 'swipe' && !canSwipe ? t('toolbar.swipeNeedsEpochs') : undefined}
+              >
+                <span className="mode-icon">{MODE_ICON[m]}</span> {t(`modes.${m}`)}
               </button>
             ))}
           </div>
@@ -461,7 +429,7 @@ export default function App() {
 
         <SkyViewer
           imageUrl={baseUrl}
-          compareUrl={mode === 'swipe' ? compareUrl : null}
+          compareUrl={swipeOn ? compareUrl : null}
           compareLabels={view?.compareLabels}
           imageFilter={imageFilter}
           width={Math.max(1, images?.width ?? 64)}
@@ -479,7 +447,7 @@ export default function App() {
           showGrid={showGrid}
           featureLayers={images?.featureLayers}
           activeFeatureIds={activeFeatures}
-          crossfade={mode === 'original' || mode === 'difference'}
+          crossfade={mode === 'original'}
           badge={view?.badge}
           placeholder={
             <StatusView
@@ -536,30 +504,42 @@ export default function App() {
           />
           <Timeline observations={observations} activeIndex={activeIndex} referenceIndex={referenceIndex} onSelect={setActiveIndex} />
           <div className="controls">
-            <button className="btn" onClick={() => step(-1)} disabled={!view}>
+            <button className="btn" onClick={() => step(-1)} disabled={!view || observations.length < 2}>
               {t('playback.previous')}
             </button>
-            <button className="btn primary" onClick={() => setPlaying((p) => !p)} disabled={!view}>
-              {playing ? t('playback.pause') : mode === 'blink' ? t('playback.blink') : t('playback.play')}
+            <button
+              className="btn primary"
+              onClick={() => setPlaying((p) => !p)}
+              disabled={!view || observations.length < 2}
+            >
+              {playing ? t('playback.pause') : t('playback.play')}
             </button>
-            <button className="btn" onClick={() => step(1)} disabled={!view}>
+            <button className="btn" onClick={() => step(1)} disabled={!view || observations.length < 2}>
               {t('playback.next')}
             </button>
             <div className="speed" title={t('playback.speed')}>
               {SPEEDS.map((s, i) => (
-                <button key={s.label} className={`chip ${speedLevel === i ? 'active' : ''}`} onClick={() => setSpeedLevel(i)} disabled={!view}>
+                <button
+                  key={s.label}
+                  type="button"
+                  className={`chip ${speedLevel === i ? 'active' : ''}`}
+                  onClick={() => setSpeedLevel(i)}
+                  disabled={!view || observations.length < 2}
+                >
                   {s.label}
                 </button>
               ))}
             </div>
-            <button
-              className="btn ghost"
-              onClick={() => setReferenceIndex(activeIndex)}
-              disabled={!view || mode === 'difference'}
-              title={t('playback.setReferenceHint')}
-            >
-              {t('playback.setReference')}
-            </button>
+            {swipeOn && (
+              <button
+                className="btn ghost"
+                onClick={() => setReferenceIndex(activeIndex)}
+                disabled={!view}
+                title={t('playback.setReferenceHint')}
+              >
+                {t('playback.setReference')}
+              </button>
+            )}
           </div>
         </div>
       </main>
