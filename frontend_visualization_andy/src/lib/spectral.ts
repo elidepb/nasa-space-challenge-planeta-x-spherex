@@ -193,15 +193,25 @@ export const SPECTRAL_FEATURES: SpectralFeature[] = [
 ]
 
 /**
- * Targets del challenge con datos SPHEREx verificados
- * (`scientific_motion_engine_etner/challenge_targets/summary.json`:
- * qr2 · SPHEREx-D2 · group=7 · size=0.05 · ok + n_observations > 0).
+ * Presets con cobertura SPHEREx real (QR2).
+ * - Vesta/Ceres: efemérides Horizons ≈2025-08-15 + visitas TAP IRSA (MOST tutorial).
+ * - Resto: challenge (`challenge_targets/summary.json`, D2·g7).
  */
 export const CHALLENGE_TARGETS: {
   id: string
   labelKey: string
   query: { ra: number; dec: number; size: number; bandpass?: Bandpass; group?: number }
 }[] = [
+  {
+    id: 'vesta',
+    labelKey: 'search.presets.vesta',
+    query: { ra: 226.1682, dec: -13.5529, size: 0.05, bandpass: 'SPHEREx-D6', group: 7 },
+  },
+  {
+    id: 'ceres',
+    labelKey: 'search.presets.ceres',
+    query: { ra: 20.3625, dec: -6.2014, size: 0.05, bandpass: 'SPHEREx-D6', group: 7 },
+  },
   {
     id: 'wise0855',
     labelKey: 'search.presets.wise0855',

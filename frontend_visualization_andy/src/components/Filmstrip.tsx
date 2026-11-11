@@ -7,11 +7,10 @@ interface Props {
   epochs: EpochImage[]
   activeIndex: number
   referenceIndex: number
-  markedIds: Set<string>
   onSelect: (index: number) => void
 }
 
-export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, markedIds, onSelect }: Props) {
+export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, onSelect }: Props) {
   const { t } = useI18n()
   const activeRef = useRef<HTMLButtonElement>(null)
 
@@ -37,7 +36,6 @@ export function Filmstrip({ observations, epochs, activeIndex, referenceIndex, m
           {urlFor(o.id) && <img src={urlFor(o.id)} alt="" draggable={false} />}
           <span className="thumb-n">{i + 1}</span>
           {i === referenceIndex && <span className="thumb-tag">{t('observations.reference')}</span>}
-          {markedIds.has(o.id) && <span className="thumb-mark">◎</span>}
         </button>
       ))}
     </div>

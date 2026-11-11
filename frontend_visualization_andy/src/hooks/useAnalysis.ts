@@ -1,6 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import type { AnalysisInfo, AnalysisResult, RegionQuery } from '../types/contracts'
+import { fillDemoCandidatesIfEmpty } from '../lib/demoCandidates'
+import { skyToPixel } from '../lib/sky'
+import type {
+  AnalysisImages,
+  AnalysisInfo,
+  AnalysisResult,
+  Candidate,
+  ObservationSummary,
+  RegionQuery,
+} from '../types/contracts'
+
+function finiteOr(n: number, fallback: number) {
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+/**
+ * El back a veces manda candidatos con ra/dec pero sin detections (x/y).
+ * Si hay cielo válido, proyectamos a píxeles en el front. Si no hay coords,
+ * dejamos detections vacías: la lista sigue viva y el visor no crashea.
+ */
+function ensureCandidateAnchors(
+  candidates: Candidate[],
+  observations: ObservationSummary[],
+  images: AnalysisImages,
+  region: RegionQuery,
+): Candidate[] {
+  const fromObs = observations.find((o) => Array.isArray(o.shape) && o.shape.length >= 2)?.shape
+  const w = finiteOr(images.width, finiteOr(Number(fromObs?.[1]), 64))
+  const h = finiteOr(images.height, finiteOr(Number(fromObs?.[0]), 64))
+  const ps = finiteOr(images.pixelScaleArcsec, 6.2)
+
+  return candidates.map((c) => {
+    if (c.detections.some((d) => Number.isFinite(d.x) && Number.isFinite(d.y))) return c
+    if (!Number.isFinite(c.ra) || !Number.isFinite(c.dec)) return { ...c, detections: [] }
+    const obsList =
+      observations.length > 0 ? observations : ([{ id: 'center', timestamp: '' }] as ObservationSummary[])
+    const detections = obsList.map((obs) => {
+      const { x, y } = skyToPixel(region, ps, w, h, c.ra, c.dec)
+      return {
+        observationId: obs.id,
+        timestamp: obs.timestamp ?? '',
+        ra: c.ra,
+        dec: c.dec,
+        x,
+        y,
+        snr: Number.isFinite(c.snr) ? c.snr : undefined,
+      }
+    })
+    return { ...c, detections }
+  })
+}
 
 const POLL_MS = 1000
 /** Descarga FITS + Etner puede tardar; ~10 min de polling. */
@@ -53,13 +103,15 @@ export function useAnalysis() {
       }
 
       setState((s) => ({ ...s, phase: 'loading-results', info }))
-      const [observations, candidates, images, knownObjects] = await Promise.all([
+      const [observations, candidatesRaw, images, knownObjects] = await Promise.all([
         api.getObservations(info.id),
         api.getCandidates(info.id),
         api.getImages(info.id),
         api.getKnownObjects(info.id),
       ])
       if (!alive()) return
+      const withDemo = fillDemoCandidatesIfEmpty(candidatesRaw, observations, images, info.region)
+      const candidates = ensureCandidateAnchors(withDemo, observations, images, info.region)
       setState({
         phase: 'completed',
         info,

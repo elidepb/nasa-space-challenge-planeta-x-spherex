@@ -14,10 +14,25 @@ export function Timeline({ observations, activeIndex, referenceIndex, onSelect }
   const { t } = useI18n()
   if (observations.length === 0) return null
   const times = observations.map((o) => timestampMs(o.timestamp))
-  const t0 = times[0]
-  const span = Math.max(1, times[times.length - 1] - t0)
-  const pos = (i: number) => (observations.length === 1 ? 50 : ((times[i] - t0) / span) * 100)
-  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+  const valid = times.map((ms, i) => ({ ms, i })).filter((t) => Number.isFinite(t.ms))
+  // Si las fechas vienen mal del backend, no tumbar toda la UI con toISOString(NaN).
+  const t0 = valid[0]?.ms ?? 0
+  const t1 = valid[valid.length - 1]?.ms ?? t0
+  const span = Math.max(1, t1 - t0)
+  const pos = (i: number) => {
+    if (observations.length === 1) return 50
+    const ms = times[i]
+    if (!Number.isFinite(ms)) return (i / Math.max(1, observations.length - 1)) * 100
+    return ((ms - t0) / span) * 100
+  }
+  const fmt = (ms: number) => {
+    if (!Number.isFinite(ms)) return '—'
+    try {
+      return new Date(ms).toISOString().slice(0, 10)
+    } catch {
+      return '—'
+    }
+  }
 
   return (
     <div className="timeline">

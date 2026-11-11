@@ -505,7 +505,11 @@ async def get_candidates(
                         "dec": c.get("dec"),
                         "snr": c.get("snr"),
                         "motion_arcsec_yr": c.get("motionArcsecPerYear"),
+                        "displacement_arcsec": c.get("displacementArcsec"),
                         "status": c.get("status", "VALIDATED"),
+                        # Etner ya entrega detections con x/y en píxeles; el front las usa
+                        # para marcar el cielo. Sin esto la UI no tiene anclas.
+                        "detections": c.get("detections") or [],
                     }
                     for i, c in enumerate(candidates, start=1)
                 ],

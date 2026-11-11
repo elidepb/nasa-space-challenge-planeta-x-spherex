@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_MODE } from './api'
 import { CandidateDetails, CandidateList } from './components/CandidatePanel'
 import { Filmstrip } from './components/Filmstrip'
-import { HunterPanel } from './components/HunterPanel'
+import { HomePage } from './components/HomePage'
 import { ImageControls } from './components/ImageControls'
 import { AboutModal, FieldGuideModal, HelpModal } from './components/InfoModals'
 import { IntroModal } from './components/IntroModal'
@@ -15,7 +14,7 @@ import { useAnalysis } from './hooks/useAnalysis'
 import { useProcessedImage } from './hooks/useProcessedImage'
 import { useI18n } from './i18n/I18nProvider'
 import { exportGif, type GifFrame } from './lib/gif'
-import { matchTrack, type HunterMark } from './lib/hunter'
+import { matchTrack } from './lib/hunter'
 import {
   cssFilterFor,
   DEFAULT_IMAGE_SETTINGS,
@@ -34,6 +33,7 @@ const SPEEDS = [
   { label: '2×', stepMs: 900, blinkMs: 250 },
 ]
 const INTRO_KEY = 'spherex.introSeen'
+const ENTERED_KEY = 'spherex.entered'
 /** Primer target con datos verificados (WISE 0855 · D2 · canal 7). */
 const DEMO_QUERY: RegionQuery = {
   ra: 133.795129,
@@ -43,6 +43,14 @@ const DEMO_QUERY: RegionQuery = {
   bandpass: 'SPHEREx-D2',
   group: 7,
   bands: [24],
+}
+
+function alreadyEntered() {
+  try {
+    return sessionStorage.getItem(ENTERED_KEY) === '1'
+  } catch {
+    return false
+  }
 }
 
 type ModalName = 'intro' | 'guide' | 'help' | 'about' | null
@@ -69,6 +77,7 @@ export default function App() {
   const [initialUrl] = useState<UrlState>(readUrlState)
   const pendingView = useRef<UrlState | null>(initialUrl.query ? initialUrl : null)
   const centerRef = useRef<HTMLElement>(null)
+  const [entered, setEntered] = useState(() => alreadyEntered() || Boolean(initialUrl.query))
 
   const [lastQuery, setLastQuery] = useState<RegionQuery | null>(null)
   const [externalQuery, setExternalQuery] = useState<RegionQuery | null>(initialUrl.query)
@@ -85,9 +94,6 @@ export default function App() {
   const [showGrid, setShowGrid] = useState(false)
   const [activeFeatures, setActiveFeatures] = useState<SpectralFeatureId[]>([])
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_IMAGE_SETTINGS)
-  const [hunterActive, setHunterActive] = useState(false)
-  const [hunterMarks, setHunterMarks] = useState<HunterMark[]>([])
-  const [autoAdvance, setAutoAdvance] = useState(true)
   const [modal, setModal] = useState<ModalName>(initialUrl.query || introAlreadySeen() ? null : 'intro')
   const [toast, setToast] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -114,7 +120,6 @@ export default function App() {
     const refId = images?.differences[0]?.referenceId
     setReferenceIndex(Math.max(0, refId ? observations.findIndex((o) => o.id === refId) : 0))
     setPlaying(false)
-    setHunterMarks([])
     const pending = pendingView.current
     pendingView.current = null
     if (pending) {
@@ -184,16 +189,6 @@ export default function App() {
     if (mode !== 'blink') setBlinkOnRef(false)
   }, [mode])
 
-  const toggleHunter = useCallback(() => {
-    setHunterActive((on) => {
-      if (!on) {
-        setPlaying(false)
-        setMode((m) => (m === 'blink' ? 'original' : m))
-      }
-      return !on
-    })
-  }, [])
-
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen()
     else void centerRef.current?.requestFullscreen?.()
@@ -215,14 +210,13 @@ export default function App() {
       else if (key === 'b') setMode('blink')
       else if (key === 'd') setMode('difference')
       else if (key === 's') setMode('swipe')
-      else if (key === 'h') toggleHunter()
       else if (key === 'g') setShowGrid((v) => !v)
       else if (key === 'k') setShowKnown((v) => !v)
       else if (key === 'f') toggleFullscreen()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [step, observations.length, modal, toggleHunter, toggleFullscreen])
+  }, [step, observations.length, modal, toggleFullscreen])
 
   const epochUrl = useCallback(
     (i: number) => images?.epochs.find((e) => e.observationId === observations[i]?.id)?.url ?? null,
@@ -285,25 +279,6 @@ export default function App() {
     return map
   }, [candidates, knownObjects, images])
 
-  const onHunterMark = useCallback(
-    (x: number, y: number) => {
-      if (!displayed) return
-      const next = [...hunterMarks.filter((m) => m.observationId !== displayed.id), { observationId: displayed.id, x, y }]
-      setHunterMarks(next)
-      if (!autoAdvance) return
-      const marked = new Set(next.map((m) => m.observationId))
-      const n = observations.length
-      for (let k = 1; k < n; k++) {
-        const idx = (view!.displayedIndex + k) % n
-        if (!marked.has(observations[idx].id)) {
-          setActiveIndex(idx)
-          return
-        }
-      }
-    },
-    [displayed, hunterMarks, autoAdvance, observations, view],
-  )
-
   async function copyLink() {
     await navigator.clipboard?.writeText(window.location.href).catch(() => undefined)
     showToast(t('toolbar.linkCopied'))
@@ -347,36 +322,58 @@ export default function App() {
     setModal(null)
   }
 
-  function startHuntingDemo() {
+  function startExploringDemo() {
     closeIntro()
     setExternalQuery({ ...DEMO_QUERY })
     runSearch(DEMO_QUERY)
-    setHunterActive(true)
     setMode('original')
   }
 
-  const markedIds = useMemo(() => new Set(hunterMarks.map((m) => m.observationId)), [hunterMarks])
   const modeIcon: Record<ViewMode, string> = { original: '▣', blink: '◑', difference: '±', swipe: '⇔' }
+
+  if (!entered) {
+    return (
+      <HomePage
+        onEnter={() => {
+          try {
+            sessionStorage.setItem(ENTERED_KEY, '1')
+          } catch {
+            // ignore
+          }
+          setEntered(true)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="logo">◎</span>
+        <button
+          type="button"
+          className="brand brand-btn"
+          onClick={() => {
+            try {
+              sessionStorage.removeItem(ENTERED_KEY)
+            } catch {
+              // ignore
+            }
+            setEntered(false)
+          }}
+          title={t('home.backHome')}
+        >
+          <img className="logo-img" src="/team-logo.jpg" alt="" width={36} height={36} />
           <div>
             <h1>{t('app.title')}</h1>
             <p className="muted small">{t('app.subtitle')}</p>
           </div>
-        </div>
+        </button>
         <div className="topbar-right">
           {analysis.info && (
             <span className={`pill status-pill phase-${phase}`}>
               {analysis.info.id} · {t(`phase.${phase}`)}
             </span>
           )}
-          <span className={`pill ${API_MODE === 'mock' ? 'pill-warn' : 'pill-ok'}`}>
-            {API_MODE === 'mock' ? t('app.mockData') : t('app.apiConnected')}
-          </span>
           <nav className="topnav">
             <button className="nav-btn" onClick={() => setModal('intro')} title={t('nav.intro')}>
               ✦ <span>{t('nav.intro')}</span>
@@ -450,9 +447,6 @@ export default function App() {
           </div>
           <div className="tools">
             <ImageControls settings={imageSettings} onChange={setImageSettings} colorApplicable={view?.colorApplicable ?? true} />
-            <button className={`tool-btn hunt ${hunterActive ? 'active' : ''}`} onClick={toggleHunter} disabled={!view} title={t('hunter.toggle')}>
-              🎯 <span>{t('hunter.button')}</span>
-            </button>
             <button className="tool-btn" onClick={copyLink} disabled={!lastQuery} title={t('toolbar.copyLink')}>
               🔗
             </button>
@@ -470,8 +464,8 @@ export default function App() {
           compareUrl={mode === 'swipe' ? compareUrl : null}
           compareLabels={view?.compareLabels}
           imageFilter={imageFilter}
-          width={images?.width ?? 64}
-          height={images?.height ?? 64}
+          width={Math.max(1, images?.width ?? 64)}
+          height={Math.max(1, images?.height ?? 64)}
           pixelScaleArcsec={images?.pixelScaleArcsec ?? 6.2}
           region={analysis.info?.region ?? null}
           candidates={candidates}
@@ -479,16 +473,13 @@ export default function App() {
           activeObservationId={displayed?.id ?? null}
           selectedCandidateId={selectedCandidateId}
           onSelectCandidate={setSelectedCandidateId}
-          showOverlays={showOverlays && !hunterActive}
+          showOverlays={showOverlays}
           showTrajectories={showTrajectories}
           showKnown={showKnown}
           showGrid={showGrid}
           featureLayers={images?.featureLayers}
           activeFeatureIds={activeFeatures}
           crossfade={mode === 'original' || mode === 'difference'}
-          hunterActive={hunterActive}
-          hunterMarks={hunterMarks}
-          onHunterMark={onHunterMark}
           badge={view?.badge}
           placeholder={
             <StatusView
@@ -541,7 +532,6 @@ export default function App() {
             epochs={images?.epochs ?? []}
             activeIndex={activeIndex}
             referenceIndex={referenceIndex}
-            markedIds={markedIds}
             onSelect={setActiveIndex}
           />
           <Timeline observations={observations} activeIndex={activeIndex} referenceIndex={referenceIndex} onSelect={setActiveIndex} />
@@ -549,7 +539,7 @@ export default function App() {
             <button className="btn" onClick={() => step(-1)} disabled={!view}>
               {t('playback.previous')}
             </button>
-            <button className="btn primary" onClick={() => setPlaying((p) => !p)} disabled={!view || hunterActive}>
+            <button className="btn primary" onClick={() => setPlaying((p) => !p)} disabled={!view}>
               {playing ? t('playback.pause') : mode === 'blink' ? t('playback.blink') : t('playback.play')}
             </button>
             <button className="btn" onClick={() => step(1)} disabled={!view}>
@@ -581,33 +571,10 @@ export default function App() {
           onSelect={setSelectedCandidateId}
           knownMatches={knownMatches}
         />
-        {hunterActive && images && analysis.info ? (
-          <HunterPanel
-            observations={observations}
-            marks={hunterMarks}
-            region={analysis.info.region}
-            images={images}
-            knownObjects={knownObjects}
-            candidates={candidates}
-            activeObservationId={displayed?.id ?? null}
-            autoAdvance={autoAdvance}
-            onAutoAdvance={setAutoAdvance}
-            onRemoveMark={(id) => setHunterMarks((ms) => ms.filter((m) => m.observationId !== id))}
-            onClear={() => setHunterMarks([])}
-            onSelectObservation={setActiveIndex}
-            onSelectCandidate={(id) => {
-              setHunterActive(false)
-              setSelectedCandidateId(id)
-            }}
-            onExit={() => setHunterActive(false)}
-            onToast={showToast}
-          />
-        ) : (
-          <CandidateDetails
-            candidate={selectedCandidate}
-            knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
-          />
-        )}
+        <CandidateDetails
+          candidate={selectedCandidate}
+          knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
+        />
       </aside>
 
       {toast && <div className="toast">{toast}</div>}
@@ -615,7 +582,7 @@ export default function App() {
       {modal === 'intro' && (
         <IntroModal
           onClose={closeIntro}
-          onStartHunting={startHuntingDemo}
+          onStartExploring={startExploringDemo}
           onOpenGuide={() => {
             closeIntro()
             setModal('guide')

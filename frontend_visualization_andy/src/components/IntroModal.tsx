@@ -4,7 +4,7 @@ import { Modal } from './Modal'
 
 interface Props {
   onClose: () => void
-  onStartHunting: () => void
+  onStartExploring: () => void
   onOpenGuide: () => void
 }
 
@@ -42,7 +42,7 @@ function SpectrumBar() {
   )
 }
 
-export function IntroModal({ onClose, onStartHunting, onOpenGuide }: Props) {
+export function IntroModal({ onClose, onStartExploring, onOpenGuide }: Props) {
   const { t } = useI18n()
   const [step, setStep] = useState(0)
 
@@ -92,11 +92,6 @@ export function IntroModal({ onClose, onStartHunting, onOpenGuide }: Props) {
             <strong>{t('modes.swipe')}</strong>
             <p className="small muted">{t('intro.toolSwipe')}</p>
           </div>
-          <div className="tool-card">
-            <span className="tool-icon">🎯</span>
-            <strong>{t('hunter.title')}</strong>
-            <p className="small muted">{t('intro.toolHunter')}</p>
-          </div>
         </div>
       ),
     },
@@ -107,8 +102,8 @@ export function IntroModal({ onClose, onStartHunting, onOpenGuide }: Props) {
         <>
           <p>{t('intro.turnText')}</p>
           <div className="row gap wrap">
-            <button className="btn primary" onClick={onStartHunting}>
-              🎯 {t('intro.startHunting')}
+            <button className="btn primary" onClick={onStartExploring}>
+              {t('intro.startExploring')}
             </button>
             <button className="btn" onClick={onOpenGuide}>
               🧭 {t('intro.openGuide')}

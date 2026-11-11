@@ -12,6 +12,7 @@ import type {
   AnalysisInfo,
   AnalysisStatus,
   Candidate,
+  CandidateDetection,
   CandidateStatus,
   ObservationSummary,
   RegionQuery,
@@ -78,13 +79,26 @@ export interface ImageListWire {
   imagenes: ImageListItemWire[]
 }
 
+export interface CandidateDetectionWire {
+  observationId?: string
+  observation_id?: string
+  timestamp?: string
+  ra?: number
+  dec?: number
+  x?: number
+  y?: number
+  snr?: number
+}
+
 export interface CandidateWire {
   candidate_id: string
   ra: number
   dec: number
   snr: number
   motion_arcsec_yr: number
+  displacement_arcsec?: number
   status: string
+  detections?: CandidateDetectionWire[]
 }
 
 export interface CandidatePairWire {
@@ -233,27 +247,64 @@ function mapCandidateStatus(raw: string | undefined): CandidateStatus {
   }
 }
 
-/** Aplana pairs[] del backend al Candidate[] del UI. */
-export function mapCandidatesWire(wire: CandidateResponseWire): Candidate[] {
+function mapDetectionWire(d: CandidateDetectionWire): CandidateDetection | null {
+  const observationId = String(d.observationId ?? d.observation_id ?? '')
+  const x = Number(d.x)
+  const y = Number(d.y)
+  if (!observationId || !Number.isFinite(x) || !Number.isFinite(y)) return null
+  return {
+    observationId,
+    timestamp: String(d.timestamp ?? ''),
+    ra: Number(d.ra ?? 0),
+    dec: Number(d.dec ?? 0),
+    x,
+    y,
+    snr: d.snr == null ? undefined : Number(d.snr),
+  }
+}
+
+function numOrNaN(v: unknown): number {
+  if (v == null || v === '') return Number.NaN
+  const n = Number(v)
+  return Number.isFinite(n) ? n : Number.NaN
+}
+
+/** Aplana pairs[] del backend al Candidate[] del UI. Nunca tira por datos rotos. */
+export function mapCandidatesWire(wire: CandidateResponseWire | null | undefined): Candidate[] {
   const out: Candidate[] = []
   const seen = new Set<string>()
-  for (const pair of wire.pairs ?? []) {
-    for (const c of pair.candidatos ?? []) {
-      const id = String(c.candidate_id ?? '')
-      if (!id || seen.has(id)) continue
-      seen.add(id)
-      const motion = Number(c.motion_arcsec_yr ?? 0)
-      out.push({
-        id,
-        ra: Number(c.ra ?? 0),
-        dec: Number(c.dec ?? 0),
-        detections: [],
-        displacementArcsec: Math.abs(motion),
-        motionArcsecPerYear: motion,
-        snr: Number(c.snr ?? 0),
-        status: mapCandidateStatus(c.status),
-      })
+  try {
+    for (const pair of wire?.pairs ?? []) {
+      for (const c of pair?.candidatos ?? []) {
+        const id = String(c?.candidate_id ?? '').trim()
+        if (!id || seen.has(id)) continue
+        seen.add(id)
+        const motion = numOrNaN(c.motion_arcsec_yr)
+        const displacement = numOrNaN(c.displacement_arcsec)
+        const detections = (c.detections ?? [])
+          .map(mapDetectionWire)
+          .filter((d): d is CandidateDetection => d != null)
+        out.push({
+          id,
+          ra: numOrNaN(c.ra),
+          dec: numOrNaN(c.dec),
+          detections,
+          displacementArcsec: Number.isFinite(displacement)
+            ? Math.abs(displacement)
+            : Number.isFinite(motion)
+              ? Math.abs(motion)
+              : 0,
+          motionArcsecPerYear: Number.isFinite(motion) ? motion : 0,
+          snr: (() => {
+            const s = numOrNaN(c.snr)
+            return Number.isFinite(s) ? s : 0
+          })(),
+          status: mapCandidateStatus(c.status),
+        })
+      }
     }
+  } catch (err) {
+    console.warn('mapCandidatesWire: payload inválido, se ignora', err)
   }
   return out
 }
