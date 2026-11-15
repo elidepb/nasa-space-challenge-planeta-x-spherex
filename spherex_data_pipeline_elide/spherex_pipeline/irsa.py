@@ -6,6 +6,7 @@ import hashlib
 import io
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -270,6 +271,10 @@ ORDER BY p.time_bounds_lower
 # Un 502 que vuelve enseguida suele ser un fallo breve; uno tardío ya agotó ese proxy.
 _TAP_SYNC_BLIP_S = 15
 _TAP_SYNC_RETRY_WAIT_S = 2
+# El proxy de IRSA alterna 502 y 200 durante minutos: SIA se reintenta con espera creciente
+# (3+6+9+12+15 s como máximo por colección) antes de rendirse.
+_SIA_ATTEMPTS = 6
+_SIA_RETRY_WAIT_S = 3
 _TAP_ASYNC_TIMEOUT_S = 600
 
 
@@ -488,14 +493,32 @@ def query_sia(
             hi = "+Inf" if time_max_mjd is None else f"{time_max_mjd:.8f}"
             params["TIME"] = f"{lo} {hi}"
         url = f"{IRSA_SIA_URL}?{urllib.parse.urlencode(params)}"
-        try:
-            with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_S) as response:
-                table = _read_votable(response.read())
+        last_exc: Exception | None = None
+        for attempt in range(1, _SIA_ATTEMPTS + 1):
+            try:
+                with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_S) as response:
+                    table = _read_votable(response.read())
+                last_exc = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < _SIA_ATTEMPTS and _is_tap_sync_failure(exc):
+                    wait = _SIA_RETRY_WAIT_S * attempt
+                    LOGGER.warning(
+                        "SIA IRSA %s intento %s/%s: %s. Se reintenta en %ss.",
+                        collection,
+                        attempt,
+                        _SIA_ATTEMPTS,
+                        exc,
+                        wait,
+                    )
+                    time.sleep(wait)
+                    continue
+                break
+        if table is not None:
             break
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{collection}: {exc}")
-            LOGGER.warning("SIA IRSA falló (%s): %s", collection, exc)
-            table = None
+        errors.append(f"{collection}: {last_exc}")
+        LOGGER.warning("SIA IRSA falló (%s): %s", collection, last_exc)
     if table is None:
         raise RuntimeError("No se pudo consultar SIA de IRSA. " + " | ".join(errors))
 
@@ -543,9 +566,56 @@ def query_observations(
     time_start: Any = None,
     time_end: Any = None,
 ) -> list[IrsaRecord]:
-    """SIA primero (DR1/QR3). TAP a menudo 502 tras el retiro de QR2 del índice."""
+    """SIA primero (DR1/QR3). TAP a menudo 502 tras el retiro de QR2 del índice.
+
+    Los resultados no vacíos se guardan unos minutos en memoria: la API consulta el
+    catálogo al responder y otra vez al descargar, y repetirlo duplica la exposición
+    a los 502 intermitentes de IRSA.
+    """
     qr = searchable_release(qr)
     bandpass = resolve_bandpass(bandpass, detector)
+    cache_key = (round(float(ra), 6), round(float(dec), 6), float(size_deg), qr, bandpass, str(time_start), str(time_end))
+    cached = _catalog_cache_get(cache_key)
+    if cached is not None:
+        LOGGER.info("Catálogo IRSA servido desde caché en memoria (%s filas).", len(cached))
+        return cached
+    records = _query_observations_remote(ra, dec, size_deg, qr, bandpass, time_start, time_end)
+    if records:
+        _catalog_cache_put(cache_key, records)
+    return records
+
+
+_CATALOG_CACHE_TTL_S = 600.0
+_CATALOG_CACHE: dict[tuple, tuple[float, list[IrsaRecord]]] = {}
+_CATALOG_CACHE_LOCK = threading.Lock()
+
+
+def _catalog_cache_get(key: tuple) -> list[IrsaRecord] | None:
+    with _CATALOG_CACHE_LOCK:
+        entry = _CATALOG_CACHE.get(key)
+        if entry is None:
+            return None
+        stored_at, records = entry
+        if time.monotonic() - stored_at > _CATALOG_CACHE_TTL_S:
+            del _CATALOG_CACHE[key]
+            return None
+        return list(records)
+
+
+def _catalog_cache_put(key: tuple, records: list[IrsaRecord]) -> None:
+    with _CATALOG_CACHE_LOCK:
+        _CATALOG_CACHE[key] = (time.monotonic(), list(records))
+
+
+def _query_observations_remote(
+    ra: float,
+    dec: float,
+    size_deg: float,
+    qr: str,
+    bandpass: str,
+    time_start: Any,
+    time_end: Any,
+) -> list[IrsaRecord]:
     try:
         records = query_sia(
             ra,

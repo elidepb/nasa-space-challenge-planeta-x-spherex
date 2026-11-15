@@ -104,9 +104,12 @@ def test_run_pipeline_defaults_to_spectral_cutout(tmp_path):
         obs_id="SPEC1",
     )
 
+    def fake_download(rec, cache_dir=None):
+        return DownloadResult(path=fits_path, url=rec.cutout_url, kind="cutout")
+
     with (
         patch("spherex_pipeline.spectral_select.query_observations", return_value=[record]),
-        patch("spherex_pipeline.spectral_select.download_cutout", return_value=fits_path),
+        patch("spherex_pipeline.spectral_select.download_record", side_effect=fake_download),
     ):
         result = run_pipeline(
             DEMO_RA,
@@ -124,6 +127,62 @@ def test_run_pipeline_defaults_to_spectral_cutout(tmp_path):
     assert result.report.mef_fallbacks == 0
     assert len(result.observations) == 1
     assert result.observations[0].metadata.get("download_kind") == "cutout"
+
+
+def _spectral_record(obs_id="SPEC1"):
+    return IrsaRecord(
+        access_url="https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/x/file.fits",
+        cutout_url="https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/x/file.fits?center=1,2&size=0.05",
+        time_mjd=60810.0,
+        bandpass="SPHEREx-D2",
+        obs_id=obs_id,
+    )
+
+
+def test_spectral_uses_full_mef_when_cutout_service_is_down(tmp_path):
+    """Si el cutout IBE da 503, el pipeline usa el FITS completo real, no datos inventados."""
+    build_demo_dataset(tmp_path / "demo", n_epochs=1)
+    fits_path = tmp_path / "demo" / "epoch_001.fits"
+
+    def fake_download(rec, cache_dir=None):
+        return DownloadResult(path=fits_path, url=rec.access_url, kind="mef")
+
+    with (
+        patch("spherex_pipeline.spectral_select.query_observations", return_value=[_spectral_record()]),
+        patch("spherex_pipeline.spectral_select.download_record", side_effect=fake_download),
+    ):
+        result = run_pipeline(
+            DEMO_RA, DEMO_DEC, DEMO_SIZE_DEG,
+            source="irsa", bandpass="SPHEREx-D2", cache_dir=tmp_path / "cache", group=1,
+        )
+
+    assert result.report.mef_fallbacks == 1
+    assert result.report.cutout_downloads == 0
+    assert not result.report.failures
+    assert result.observations[0].metadata["download_kind"] == "mef"
+    assert result.observations[0].metadata["source"] == "irsa"
+
+
+def test_spectral_download_failure_is_reported_never_synthetic(tmp_path):
+    with (
+        patch("spherex_pipeline.spectral_select.query_observations", return_value=[_spectral_record()]),
+        patch(
+            "spherex_pipeline.spectral_select.download_record",
+            side_effect=RuntimeError("HTTP Error 503: Service Unavailable"),
+        ),
+    ):
+        result = run_pipeline(
+            DEMO_RA, DEMO_DEC, DEMO_SIZE_DEG,
+            source="irsa", bandpass="SPHEREx-D2", cache_dir=tmp_path / "cache", group=1,
+        )
+        assert result.observations == []
+        assert result.report.failed_downloads == 1
+        assert result.report.failures[0].id == "SPEC1"
+        with pytest.raises(RuntimeError, match="503"):
+            get_observations(
+                DEMO_RA, DEMO_DEC, DEMO_SIZE_DEG,
+                source="irsa", bandpass="SPHEREx-D2", cache_dir=tmp_path / "cache", group=1,
+            )
 
 
 def test_method_must_be_spectral_or_original():

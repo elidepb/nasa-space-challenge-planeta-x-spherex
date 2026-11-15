@@ -248,13 +248,28 @@ def _from_spectral(
         time_end=time_end,
         verbose=False,
     )
+    failed_downloads = sum(1 for item in loaded.failures if item["stage"] == "download")
+    failed_parses = sum(1 for item in loaded.failures if item["stage"] != "download")
     report = RetrievalReport(
         tap_matches=loaded.tap_matches,
         requested=loaded.requested,
-        downloaded=loaded.n_real_fits,
+        downloaded=loaded.n_real_fits + failed_parses,
         parsed=loaded.n_real_fits,
         observations=len(loaded.observations),
-        cutout_downloads=loaded.n_real_fits,
+        failed_downloads=failed_downloads,
+        failed_parses=failed_parses,
+        cutout_downloads=loaded.n_real_fits - loaded.n_mef_fallback,
+        mef_fallbacks=loaded.n_mef_fallback,
+        failures=[
+            FailureRecord(
+                id=item["id"],
+                url=item["url"],
+                stage=item["stage"],
+                error_type=item["error_type"],
+                message=item["message"],
+            )
+            for item in loaded.failures
+        ],
     )
     return loaded.observations, report
 

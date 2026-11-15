@@ -417,3 +417,40 @@ def test_resolve_bandpass_rejects_mismatch_and_missing():
         resolve_bandpass("SPHEREx-D2", detector=5)
     with pytest.raises(ValueError, match="Indique bandpass"):
         resolve_bandpass(None, None)
+
+
+def test_query_observations_caches_successful_catalog(monkeypatch):
+    """La segunda consulta idéntica no vuelve a tocar IRSA (evita duplicar la exposición a 502)."""
+    from spherex_pipeline import irsa
+
+    calls = []
+    record = irsa.IrsaRecord(
+        access_url="https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/x/a.fits",
+        cutout_url="https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/x/a.fits?center=1,2&size=0.05",
+        time_mjd=60810.0,
+        bandpass="SPHEREx-D2",
+        obs_id="A",
+    )
+
+    def fake_sia(*args, **kwargs):
+        calls.append(1)
+        return [record]
+
+    monkeypatch.setattr(irsa, "query_sia", fake_sia)
+    first = irsa.query_observations(1.0, 2.0, 0.05, qr="dr1", bandpass="SPHEREx-D2")
+    second = irsa.query_observations(1.0, 2.0, 0.05, qr="dr1", bandpass="SPHEREx-D2")
+    assert first == second == [record]
+    assert len(calls) == 1
+    irsa.query_observations(1.0, 2.0, 0.06, qr="dr1", bandpass="SPHEREx-D2")
+    assert len(calls) == 2
+
+
+def test_query_observations_does_not_cache_empty_results(monkeypatch):
+    from spherex_pipeline import irsa
+
+    calls = []
+    monkeypatch.setattr(irsa, "query_sia", lambda *a, **k: calls.append(1) or [])
+    monkeypatch.setattr(irsa, "query_tap", lambda *a, **k: [])
+    irsa.query_observations(1.0, 2.0, 0.05, qr="dr1", bandpass="SPHEREx-D2")
+    irsa.query_observations(1.0, 2.0, 0.05, qr="dr1", bandpass="SPHEREx-D2")
+    assert len(calls) == 2

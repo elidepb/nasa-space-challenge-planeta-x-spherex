@@ -22,6 +22,8 @@ Ejecutar::
 from __future__ import annotations
 
 import argparse
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +46,7 @@ from PIL import Image
 from spherex_pipeline.constants import (
     CACHE_DIR,
     DEFAULT_BANDPASS,
+    DEFAULT_MAX_WORKERS,
     DEFAULT_QR,
     DEFAULT_SOURCE,
     DEFAULT_SPECTRAL_GROUP,
@@ -57,7 +60,7 @@ from spherex_pipeline.cutouts import cutout_region, harmonize_to_region
 from spherex_pipeline.demo import load_demo_observations
 from spherex_pipeline.irsa import (
     dedupe_records,
-    download_cutout,
+    download_record,
     query_observations,
     subsample_epochs,
 )
@@ -65,6 +68,8 @@ from spherex_pipeline.masking import apply_invalid_mask
 from spherex_pipeline.models import Observation
 
 warnings.filterwarnings("ignore", message=".*SIP distortion.*")
+
+LOGGER = logging.getLogger(__name__)
 
 IMAGES_OUTPUT_DIR = PROJECT_DIR / "data" / "images_select"
 
@@ -86,6 +91,9 @@ class SpectralLoadResult:
     metrics: list[dict[str, Any]] = field(default_factory=list)
     n_real_fits: int = 0
     n_fallback: int = 0
+    n_mef_fallback: int = 0
+    # Una entrada por época que no se pudo traer de IRSA: id, url, stage, error_type, message.
+    failures: list[dict[str, str]] = field(default_factory=list)
     tap_matches: int = 0
     requested: int = 0
     group: int = DEFAULT_SPECTRAL_GROUP
@@ -549,8 +557,14 @@ def load_group_observations(
     time_end: Any = None,
     verbose: bool = False,
     metrics: list[dict[str, Any]] | None = None,
+    max_workers: int = DEFAULT_MAX_WORKERS,
 ) -> SpectralLoadResult:
-    """Consulta TAP (o demo), selecciona un grupo espectral y carga esas épocas."""
+    """Consulta IRSA (o demo), selecciona un grupo espectral y carga esas épocas.
+
+    Con ``source="irsa"`` nunca se fabrican imágenes: cada época sale del FITS real
+    (cutout IBE, o el MEF completo de S3/IBE si el servicio de cutouts no responde).
+    Una época que no se pueda traer se anota en ``failures`` y se omite.
+    """
     metrics = metrics if metrics is not None else []
     cache_path = Path(cache_dir or CACHE_DIR)
     all_bins = get_detector_bins(bandpass, n_bins=17)
@@ -603,69 +617,105 @@ def load_group_observations(
             print(f"   -> Este grupo está vacío. Grupos con filas: {occupied}")
 
     loaded_obs: list[Observation] = []
-    irsa_cutout_available = source == "irsa"
+    failures: list[dict[str, str]] = []
     n_real_fits = 0
+    n_mef_fallback = 0
     n_fallback = 0
 
-    with StageProfiler(f"3. Carga y procesamiento FITS (Grupo #{group:02d})", metrics):
-        for rec, wl_val, s_idx in matched_records:
-            obs_id_val = getattr(rec, "obs_id", None) or getattr(rec, "id", None) or f"obs_{len(loaded_obs)+1}"
-            cutout_url_val = getattr(rec, "cutout_url", None) or getattr(rec, "uri", "")
-
-            if irsa_cutout_available and cutout_url_val:
-                try:
-                    local_file = download_cutout(cutout_url_val, cache_dir=cache_path)
-                    extra = {
-                        "wavelength": wl_val,
-                        "bandwidth": 0.0334,
-                        "survey_index": s_idx,
-                        "bandpass": bandpass,
-                        "detector": det_num,
-                        "origin": "spherex_fits",
-                        "source": "irsa",
-                        "qr": qr,
-                        "local_path": str(local_file),
-                        "download_kind": "cutout",
-                    }
-                    obs = observation_from_fits_fast(
-                        local_file,
-                        observation_id=str(obs_id_val),
-                        ra=ra,
-                        dec=dec,
-                        timestamp_mjd=getattr(rec, "time_mjd", None),
-                        extra_metadata=extra,
-                    )
-                    obs = cutout_region(obs, ra, dec, size)
-                    if obs.flags is not None:
-                        obs.image, obs.valid_mask = apply_invalid_mask(obs.image, obs.flags, obs.variance)
-                    loaded_obs.append(obs)
-                    n_real_fits += 1
-                    if verbose:
-                        print(
-                            f"   -> REAL FITS {Path(local_file).name} "
-                            f"({Path(local_file).stat().st_size} B) id={obs_id_val}"
-                        )
-                    continue
-                except Exception as exc:
-                    if verbose:
-                        print(f"   [Aviso IRSA] {exc}. Activando fallback sin reintentos...")
-                    irsa_cutout_available = False
-
-            obs = _fallback_observation(
-                rec,
-                wl_val,
-                s_idx,
-                ra,
-                dec,
-                det_num,
-                bandpass,
-                len(loaded_obs),
-                cutout_url_val,
+    def _load_real(rec: Any, wl_val: float, s_idx: int, position: int):
+        """Descarga (cutout IBE o MEF completo) y lee una época real. Nunca inventa píxeles."""
+        obs_id_val = getattr(rec, "obs_id", None) or getattr(rec, "id", None) or f"obs_{position + 1}"
+        stage = "download"
+        try:
+            downloaded = download_record(rec, cache_dir=cache_path)
+            stage = "parse"
+            extra = {
+                "wavelength": wl_val,
+                "bandwidth": 0.0334,
+                "survey_index": s_idx,
+                "bandpass": bandpass,
+                "detector": det_num,
+                "origin": "spherex_fits",
+                "source": "irsa",
+                "qr": qr,
+                "access_url": getattr(rec, "access_url", None),
+                "download_url": downloaded.url,
+                "local_path": str(downloaded.path),
+                "download_kind": downloaded.kind,
+            }
+            obs = observation_from_fits_fast(
+                downloaded.path,
+                observation_id=str(obs_id_val),
+                ra=ra,
+                dec=dec,
+                timestamp_mjd=getattr(rec, "time_mjd", None),
+                extra_metadata=extra,
             )
-            loaded_obs.append(obs)
-            n_fallback += 1
-            if verbose:
-                print(f"   -> FALLBACK {obs.fits_source} id={obs.id} λ_asignada={wl_val:.4f}")
+            if obs.wcs() is None:
+                raise RuntimeError("el FITS no trae WCS espacial")
+            obs = cutout_region(obs, ra, dec, size)
+            if obs.flags is not None:
+                obs.image, obs.valid_mask = apply_invalid_mask(obs.image, obs.flags, obs.variance)
+            return obs, downloaded, None
+        except Exception as exc:  # noqa: BLE001
+            failure = {
+                "id": str(obs_id_val),
+                "url": str(getattr(rec, "cutout_url", None) or getattr(rec, "access_url", "")),
+                "stage": stage,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            }
+            return None, None, failure
+
+    with StageProfiler(f"3. Carga y procesamiento FITS (Grupo #{group:02d})", metrics):
+        if source == "irsa":
+            if matched_records:
+                workers = max(1, min(int(max_workers), len(matched_records)))
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = [
+                        pool.submit(_load_real, rec, wl_val, s_idx, position)
+                        for position, (rec, wl_val, s_idx) in enumerate(matched_records)
+                    ]
+                    for future in as_completed(futures):
+                        obs, downloaded, failure = future.result()
+                        if failure is not None:
+                            failures.append(failure)
+                            LOGGER.error(
+                                "Época %s no disponible en IRSA (%s): %s",
+                                failure["id"],
+                                failure["stage"],
+                                failure["message"],
+                            )
+                            if verbose:
+                                print(f"   [Error IRSA] {failure['id']}: {failure['message']}")
+                            continue
+                        loaded_obs.append(obs)
+                        n_real_fits += 1
+                        if downloaded.kind == "mef":
+                            n_mef_fallback += 1
+                        if verbose:
+                            print(
+                                f"   -> REAL FITS {Path(downloaded.path).name} "
+                                f"({Path(downloaded.path).stat().st_size} B, {downloaded.kind}) id={obs.id}"
+                            )
+        else:
+            for rec, wl_val, s_idx in matched_records:
+                cutout_url_val = getattr(rec, "cutout_url", None) or getattr(rec, "uri", "")
+                obs = _fallback_observation(
+                    rec,
+                    wl_val,
+                    s_idx,
+                    ra,
+                    dec,
+                    det_num,
+                    bandpass,
+                    len(loaded_obs),
+                    cutout_url_val,
+                )
+                loaded_obs.append(obs)
+                n_fallback += 1
+                if verbose:
+                    print(f"   -> DEMO {obs.fits_source} id={obs.id} λ_asignada={wl_val:.4f}")
 
     with StageProfiler("4. Homogeneizacion y agrupacion por epocas", metrics):
         loaded_obs = harmonize_to_region(loaded_obs, ra, dec, size)
@@ -680,6 +730,8 @@ def load_group_observations(
         metrics=metrics,
         n_real_fits=n_real_fits,
         n_fallback=n_fallback,
+        n_mef_fallback=n_mef_fallback,
+        failures=failures,
         tap_matches=tap_matches,
         requested=len(matched_records),
         group=group,
