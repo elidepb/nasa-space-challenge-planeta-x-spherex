@@ -31,7 +31,7 @@ export function SearchPanel({ busy, onSubmit, externalQuery }: Props) {
   const [ra, setRa] = useState(String(CHALLENGE_TARGETS[0].query.ra))
   const [dec, setDec] = useState(String(CHALLENGE_TARGETS[0].query.dec))
   const [size, setSize] = useState(String(CHALLENGE_TARGETS[0].query.size))
-  const [qr, setQr] = useState('qr2')
+  const [qr, setQr] = useState('dr1')
   const [bands, setBands] = useState<number[]>([DEFAULT_BAND_INDEX])
   const [scenario, setScenario] = useState<MockScenario>('normal')
   const [error, setError] = useState<FieldError | null>(null)
@@ -93,7 +93,7 @@ export function SearchPanel({ busy, onSubmit, externalQuery }: Props) {
         <label className="field">
           <span>{t('search.release')}</span>
           <select value={qr} onChange={(e) => setQr(e.target.value)}>
-            <option value="qr2">QR2</option>
+            <option value="dr1">DR1</option>
             <option value="qr3">QR3</option>
           </select>
         </label>

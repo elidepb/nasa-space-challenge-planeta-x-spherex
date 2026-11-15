@@ -42,7 +42,7 @@ const DEMO_QUERY: RegionQuery = {
   ra: 133.795129,
   dec: -7.245147,
   size: 0.85,
-  qr: 'qr2',
+  qr: 'dr1',
   bandpass: 'SPHEREx-D2',
   group: 7,
   bands: [24],

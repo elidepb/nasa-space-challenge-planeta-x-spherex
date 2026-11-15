@@ -12,6 +12,7 @@ from spherex_pipeline.irsa import (
     IrsaRecord,
     _is_gateway_error,
     _tap_adql,
+    searchable_release,
     cutout_url,
     download_record,
     filter_records_by_time,
@@ -162,12 +163,20 @@ def test_subsample_none_returns_all_epochs():
         ("qr2", "qr2"),
         ("QR2", "qr2"),
         ("QR3", "qr3"),
+        ("DR1", "dr1"),
+        ("spherex_dr1", "dr1"),
         ("spherex_qr2", "qr2"),
         ("qr2_deep", "qr2_deep"),
     ],
 )
 def test_normalize_qr_aliases(value, expected):
     assert normalize_qr(value) == expected
+
+
+def test_searchable_release_maps_retired_qr2_to_dr1():
+    assert searchable_release("qr2") == "dr1"
+    assert searchable_release("DR1") == "dr1"
+    assert searchable_release("qr3") == "qr3"
 
 
 def test_normalize_qr_rejects_unknown():
@@ -352,6 +361,26 @@ def test_query_tap_timeout_uses_async_not_another_sync(monkeypatch):
     assert service.sync_calls == 1
     assert service.async_calls == 1
     assert len(records) == 1
+
+
+def test_query_observations_uses_sia_and_skips_retired_qr2(monkeypatch):
+    sia_records = [
+        IrsaRecord(access_url=ACCESS.replace("/qr2/", "/dr1/"), cutout_url="u", time_mjd=60810.0, bandpass="SPHEREx-D2")
+    ]
+
+    def fake_sia(*args, **kwargs):
+        assert kwargs.get("qr") == "dr1"
+        return sia_records
+
+    def tap_must_not_run(*args, **kwargs):
+        raise AssertionError("con SIA de DR1 no hay que esperar al TAP")
+
+    monkeypatch.setattr("spherex_pipeline.irsa.query_sia", fake_sia)
+    monkeypatch.setattr("spherex_pipeline.irsa.query_tap", tap_must_not_run)
+    from spherex_pipeline.irsa import query_observations
+
+    records = query_observations(210.8, 54.3, 0.05, qr="qr2", bandpass="SPHEREx-D2")
+    assert records == sia_records
 
 
 def test_query_tap_non_gateway_pyvo_error_uses_http(monkeypatch):
