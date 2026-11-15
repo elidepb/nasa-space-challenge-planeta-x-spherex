@@ -244,11 +244,104 @@ ORDER BY p.time_bounds_lower
 """.strip()
 
 
-def _query_tap_pyvo(adql: str) -> Table:
-    import pyvo
+# El proxy de Apache delante de /TAP/sync corta la conexión si el ADQL
+# (CONTAINS sobre el polígono SPHEREx) tarda demasiado, y responde 502 Proxy Error.
+# Un 502 que vuelve enseguida suele ser un fallo breve; uno tardío ya agotó ese proxy.
+_TAP_SYNC_BLIP_S = 15
+_TAP_SYNC_RETRY_WAIT_S = 2
+_TAP_ASYNC_TIMEOUT_S = 600
 
-    service = pyvo.dal.TAPService(IRSA_TAP_URL)
-    return service.search(adql).to_table()
+
+def _exception_http_status(exc: BaseException) -> int | None:
+    if isinstance(exc, urllib.error.HTTPError):
+        return int(exc.code)
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        return status
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and code > 0:
+        return code
+    cause = getattr(exc, "cause", None)
+    if isinstance(cause, BaseException) and cause is not exc:
+        return _exception_http_status(cause)
+    return None
+
+
+def _is_gateway_error(exc: BaseException) -> bool:
+    """502/503/504 del proxy de IRSA, no un error de ADQL."""
+    if _exception_http_status(exc) in _UNAVAILABLE_HTTP:
+        return True
+    text = str(exc)
+    return any(
+        marker in text
+        for marker in ("Proxy Error", "Bad Gateway", "Gateway Timeout", "Gateway Time-out")
+    )
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    if "Timeout" in type(exc).__name__:
+        return True
+    cause = getattr(exc, "cause", None)
+    if isinstance(cause, BaseException) and cause is not exc and _is_timeout_error(cause):
+        return True
+    return "timed out" in str(exc).lower()
+
+
+def _is_tap_sync_failure(exc: BaseException) -> bool:
+    """El sync no contestó: proxy 502/503/504 o la conexión se quedó colgada."""
+    return _is_gateway_error(exc) or _is_timeout_error(exc)
+
+
+def _pyvo_tap_service():
+    import pyvo
+    import requests
+
+    class _TimeoutSession(requests.Session):
+        def request(self, *args, **kwargs):
+            kwargs.setdefault("timeout", REMOTE_TIMEOUT_S)
+            return super().request(*args, **kwargs)
+
+    return pyvo.dal.TAPService(IRSA_TAP_URL, session=_TimeoutSession())
+
+
+def _pyvo_run_async(service, adql: str) -> Table:
+    import inspect
+
+    kwargs = {}
+    if "timeout" in inspect.signature(service.run_async).parameters:
+        kwargs["timeout"] = _TAP_ASYNC_TIMEOUT_S
+    return service.run_async(adql, **kwargs).to_table()
+
+
+def _query_tap_pyvo(adql: str) -> tuple[Table, str]:
+    """Sync primero. Si el proxy de /TAP/sync responde 502/503/504, el mismo ADQL va en async."""
+    service = _pyvo_tap_service()
+    started = time.monotonic()
+    try:
+        return service.search(adql).to_table(), "pyvo"
+    except Exception as exc:
+        if not _is_tap_sync_failure(exc):
+            raise
+        if time.monotonic() - started < _TAP_SYNC_BLIP_S:
+            LOGGER.warning(
+                "TAP sync IRSA respondió %s; se reintenta una vez (el proxy a veces falla un instante).",
+                exc,
+            )
+            time.sleep(_TAP_SYNC_RETRY_WAIT_S)
+            try:
+                return service.search(adql).to_table(), "pyvo"
+            except Exception as retry_exc:
+                if not _is_tap_sync_failure(retry_exc):
+                    raise
+                exc = retry_exc
+        LOGGER.warning(
+            "TAP sync IRSA sigue en %s. /TAP/sync lo corta el proxy; se envía la misma consulta en asíncrono.",
+            exc,
+        )
+        return _pyvo_run_async(service, adql), "pyvo-async"
 
 
 def _query_tap_http(adql: str) -> Table:
@@ -291,24 +384,32 @@ def query_tap(
     )
     errors: list[str] = []
     table = None
-    for method, fn in (("pyvo", _query_tap_pyvo), ("http", _query_tap_http)):
-        try:
-            table = fn(adql)
-            LOGGER.info(
-                "Consulta TAP IRSA (%s, %s, %s, time=%s..%s): %s filas",
-                method,
-                qr,
-                bandpass,
-                time_start,
-                time_end,
-                len(table),
-            )
-            break
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{method}: {exc}")
-            LOGGER.warning("TAP IRSA falló (%s): %s", method, exc)
+    method = ""
+    try:
+        table, method = _query_tap_pyvo(adql)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"pyvo: {exc}")
+        LOGGER.warning("TAP IRSA falló (pyvo): %s", exc)
+        # Otro POST a /TAP/sync repite el mismo corte del proxy. Solo sirve si pyvo
+        # falló por otra causa (no está instalado, error de protocolo, etc.).
+        if not _is_tap_sync_failure(exc):
+            try:
+                table = _query_tap_http(adql)
+                method = "http"
+            except Exception as http_exc:  # noqa: BLE001
+                errors.append(f"http: {http_exc}")
+                LOGGER.warning("TAP IRSA falló (http): %s", http_exc)
     if table is None:
         raise RuntimeError("No se pudo consultar TAP de IRSA. " + " | ".join(errors))
+    LOGGER.info(
+        "Consulta TAP IRSA (%s, %s, %s, time=%s..%s): %s filas",
+        method,
+        qr,
+        bandpass,
+        time_start,
+        time_end,
+        len(table),
+    )
 
     records: list[IrsaRecord] = []
     for row in table:
