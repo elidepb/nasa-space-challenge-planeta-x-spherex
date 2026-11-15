@@ -40,7 +40,10 @@ from spherex_pipeline.spectral_select import (
 from app.services.catalog_service import fetch_phase1_metadata_and_observations
 from app.services.download_service import process_background_group
 from app.services.motion_service import run_etner_analysis
-from app.services.rgb_service import generate_rgb_png
+from app.services.rgb_service import (
+    generate_rgb_composites_by_survey,
+    generate_rgb_png,
+)
 from app.storage.factory import SessionRepositoryFactory
 
 router = APIRouter(tags=["spectral analyses"])
@@ -413,42 +416,64 @@ async def get_fits_file(
 
 
 @router.post(
-    "/spectral-analyses/{session_id}/rgb-composite",
-    summary="Composición falso color RGB",
+    "/spectral-analyses/rgb-composite",
+    summary="Composición falso color RGB por survey (una imagen por época)",
 )
 async def rgb_composite(
-    session_id: UUID = PathParam(..., description="Identificador de sesión"),
     request: RGBCompositeRequest = ...,
-) -> Response:
-    store = _OBSERVATION_STORE.get(session_id)
-    if not store:
-        raise HTTPException(status_code=404, detail="Session observations not ready")
-    missing = [
-        channel
-        for channel, obs_id in (
-            ("red", request.red_obs_id),
-            ("green", request.green_obs_id),
-            ("blue", request.blue_obs_id),
-        )
-        if obs_id not in store
+) -> dict[str, Any]:
+    """Genera una composición RGB falsa por survey (época).
+
+    Para cada canal (red/green/blue) consulta Elide con el detector
+    ``SPHEREx-D{sensor}`` y el grupo espectral pedido, agrupa las observaciones
+    en surveys (gaps temporales > 45 días) y arma un PNG RGB por survey común
+    a los tres canales. Cada PNG se persiste en el volumen de imágenes y se
+    sirve mediante ``GET /spectral-analyses/rgb-composites/{composite_id}.png``.
+    """
+    channels = [
+        {"channel": ch.channel, "sensor": ch.sensor, "group": ch.group}
+        for ch in request.channels
     ]
-    if missing:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Observations not available for channel(s): {', '.join(missing)}",
-        )
-    observations = [
-        store[request.red_obs_id],
-        store[request.green_obs_id],
-        store[request.blue_obs_id],
-    ]
+
     try:
-        png_bytes = await asyncio.to_thread(
-            generate_rgb_png, observations
+        result = await generate_rgb_composites_by_survey(
+            request.ra,
+            request.dec,
+            request.size_deg,
+            channels,
+            settings.CACHE_DIR,
+            settings.IMAGES_DIR,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return Response(content=png_bytes, media_type="image/png")
+    except (RuntimeError, TimeoutError) as exc:
+        # Fallos de red/timeout consultando IRSA (Elide): no es un error del
+        # cliente, es una dependencia externa no disponible. Devuelve 502 en
+        # lugar de dejar que suba como 500 Internal Server Error.
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo consultar IRSA para generar el RGB: {exc}",
+        )
+    return result
+
+
+@router.get(
+    "/spectral-analyses/rgb-composites/{composite_id}.png",
+    summary="Descarga del PNG de una composición RGB por survey",
+)
+async def get_rgb_composite_png(
+    composite_id: str = PathParam(..., description="Identificador de la composición"),
+) -> Response:
+    images_dir = Path(settings.IMAGES_DIR)
+    png_path = images_dir / f"{composite_id}.png"
+    if not png_path.is_file():
+        raise HTTPException(status_code=404, detail="Composite PNG not found")
+    data = png_path.read_bytes()
+    return Response(
+        content=data,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
 
 
 @router.get(
