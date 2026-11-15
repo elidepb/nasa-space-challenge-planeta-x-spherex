@@ -408,3 +408,49 @@ def observation_from_fits(
             spectral_calibration_quality=SPECTRAL_CALIBRATION_QUALITY,
             spectral_unit=SPECTRAL_UNIT,
         )
+
+
+def get_pixel_wavelength_lvf(header, x_pix: float, y_pix: float) -> tuple[float, float]:
+    """
+    Calcula la longitud de onda exacta (µm) y el ancho de banda en (x, y)
+    usando el WCS espectral del Filtro Variable Lineal (LVF) de SPHEREx.
+    """
+    wcs_full = WCS(header)
+    # Si el FITS incluye el tercer eje espectral o tabla de calibración WCS:
+    if wcs_full.naxis == 3:
+        _, _, wave_m = wcs_full.pixel_to_world_values(x_pix, y_pix, 0)
+        wave_um = float(wave_m * 1e6)
+    else:
+        # Fallback aproximado por gradiente lineal según banda del detector (1..6)
+        det = header.get("DETECTOR", 1)
+        band_ranges = {
+            1: (0.75, 1.1),
+            2: (1.1, 1.6),
+            3: (1.6, 2.4),
+            4: (2.4, 3.8),
+            5: (3.8, 4.4),
+            6: (4.4, 5.0),
+        }
+        w_min, w_max = band_ranges.get(det, (0.75, 5.0))
+        ny = header.get("NAXIS2", 2048)
+        wave_um = w_min + (y_pix / ny) * (w_max - w_min)
+
+    resolving_power = {1: 39, 2: 41, 3: 41, 4: 35, 5: 112, 6: 128}.get(header.get("DETECTOR", 1), 40)
+    bandwidth_um = wave_um / resolving_power
+    return round(float(wave_um), 4), round(float(bandwidth_um), 4)
+
+
+def clean_and_subtract_zodi(cutouts: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Resta la luz zodiacal modelada y enmascara píxeles corruptos con NaN."""
+    img = cutouts["IMAGE"].astype(np.float32)
+    var = cutouts["VARIANCE"].astype(np.float32)
+    zodi = cutouts.get("ZODI", np.zeros_like(img))
+    flags = cutouts.get("FLAGS", np.zeros_like(img, dtype=np.int32))
+
+    # Bitmask de SPHEREx: descartar saturados, rayos cósmicos y píxeles muertos
+    bad_mask = (flags & 0b111) > 0
+    clean_img = img - zodi
+    clean_img[bad_mask] = np.nan
+    var[bad_mask] = np.inf
+    return clean_img, var
+

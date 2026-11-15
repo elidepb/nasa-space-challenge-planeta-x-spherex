@@ -36,6 +36,8 @@ interface RapidAnalysisResponse {
   dec: number
   size_arcsec: number
   band: string
+  width?: number
+  height?: number
   wcs_header: Record<string, unknown>
   epochs: RapidAnalysisEpoch[]
   candidates: RapidAnalysisCandidate[]
@@ -88,6 +90,8 @@ export function createHttpApi(baseUrl: string): SpherexApi {
         message: `Análisis rápido completado (${data.epochs.length} épocas, ${data.candidates.length} candidatos)`,
       }
 
+      const w = data.width && data.width > 0 ? data.width : 64
+      const h = data.height && data.height > 0 ? data.height : 64
       const observations: ObservationSummary[] = data.epochs.map((ep, idx) => ({
         id: ep.obs_id,
         timestamp: ep.timestamp || new Date(Date.now() - (data.epochs.length - idx) * 86400000).toISOString(),
@@ -102,45 +106,45 @@ export function createHttpApi(baseUrl: string): SpherexApi {
         spectral_calibration_quality: 'approximate',
         spectral_unit: 'μm',
         fits_source: ep.obs_id,
-        shape: [64, 64],
+        shape: [h, w],
         n_invalid_pixels: 0,
         metadata: { mjd: ep.mjd },
       }))
 
-      const candidates: Candidate[] = data.candidates.map((c) => ({
-        id: c.id,
-        ra: c.ra_deg,
-        dec: c.dec_deg,
-        snr: c.snr,
-        displacementArcsec: c.displacement_arcsec,
-        motionArcsecPerYear: c.velocity_arcsec_yr,
-        status: 'candidate' as const,
-        detections: [
-          {
-            observationId: data.epochs[0]?.obs_id ?? 'ep-0',
-            timestamp: data.epochs[0]?.timestamp ?? '',
+      const nEpochs = data.epochs.length
+      const candidates: Candidate[] = data.candidates.map((c) => {
+        // Interpolar detecciones para todas las épocas intermedias (movimiento propio lineal)
+        const detections = data.epochs.map((ep, i) => {
+          const frac = nEpochs > 1 ? i / (nEpochs - 1) : 0
+          const curX = c.x1_px + (c.x2_px - c.x1_px) * frac
+          const curY = c.y1_px + (c.y2_px - c.y1_px) * frac
+          return {
+            observationId: ep.obs_id,
+            timestamp: ep.timestamp ?? '',
             ra: c.ra_deg,
             dec: c.dec_deg,
-            x: c.x1_px,
-            y: c.y1_px,
+            x: curX,
+            y: curY,
             snr: c.snr,
-          },
-          {
-            observationId: data.epochs[data.epochs.length - 1]?.obs_id ?? 'ep-last',
-            timestamp: data.epochs[data.epochs.length - 1]?.timestamp ?? '',
-            ra: c.ra_deg,
-            dec: c.dec_deg,
-            x: c.x2_px,
-            y: c.y2_px,
-            snr: c.snr,
-          },
-        ],
-      }))
+          }
+        })
+
+        return {
+          id: c.id,
+          ra: c.ra_deg,
+          dec: c.dec_deg,
+          snr: c.snr,
+          displacementArcsec: c.displacement_arcsec,
+          motionArcsecPerYear: c.velocity_arcsec_yr,
+          status: 'candidate' as const,
+          detections,
+        }
+      })
 
       const images: AnalysisImages = {
-        width: 64,
-        height: 64,
-        pixelScaleArcsec: data.size_arcsec / 64,
+        width: w,
+        height: h,
+        pixelScaleArcsec: data.size_arcsec / w,
         epochs: data.epochs.map((ep) => ({
           observationId: ep.obs_id,
           url: ep.original_png,

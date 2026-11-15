@@ -90,6 +90,7 @@ const en = {
   },
   search: {
     title: 'Sky region',
+    whereToLook: 'Where to look',
     ra: 'RA (°)',
     dec: 'Dec (°)',
     size: 'Size (°)',
@@ -118,6 +119,8 @@ const en = {
     layersHint: 'Toggle to paint dust, gases or hydrogen over the sky (visible immediately).',
     layersNeedAnalysis: 'Search & analyze a region first; then you can turn layers on.',
     challengeTargets: 'Targets with SPHEREx data',
+    selectStarOrTarget: 'Select star or target',
+    selectTargetPlaceholder: '— Choose a star or target —',
     demoTargets: 'Demo fields',
     features: {
       hydrogen: 'Hydrogen',

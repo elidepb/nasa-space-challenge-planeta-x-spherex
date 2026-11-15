@@ -8,6 +8,8 @@ import {
 import { useI18n } from '../i18n/I18nProvider'
 import { formatDecDms, formatRaHms, pixelToSky } from '../lib/sky'
 import type { Candidate, FeatureLayerImage, KnownObject, RegionQuery } from '../types/contracts'
+export { SkyViewerCanvas } from './SkyViewerCanvas'
+export type { GaiaOverlayStar, SkyViewerCanvasProps } from './SkyViewerCanvas'
 
 interface Props {
   imageUrl: string | null

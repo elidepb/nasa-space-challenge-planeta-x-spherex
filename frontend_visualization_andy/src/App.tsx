@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CandidateDetails, CandidateList } from './components/CandidatePanel'
 import { Filmstrip } from './components/Filmstrip'
+import { HeaderDropdownTab } from './components/HeaderDropdownTab'
 import { HomePage } from './components/HomePage'
 import { ImageControls } from './components/ImageControls'
 import { AboutModal, FieldGuideModal, HelpModal } from './components/InfoModals'
 import { IntroModal } from './components/IntroModal'
-import { LanguageSelector } from './components/LanguageSelector'
+import { NavigationDrawer } from './components/NavigationDrawer'
 import { SearchPanel } from './components/SearchPanel'
 import { SkyViewer } from './components/SkyViewer'
+import { SpectralBandPicker } from './components/SpectralBandPicker'
 import { StatusView } from './components/StatusView'
 import { Timeline } from './components/Timeline'
 import { useAnalysis } from './hooks/useAnalysis'
@@ -29,7 +31,14 @@ import {
   type ImageSettings,
 } from './lib/imageProcessing'
 import { formatTimestamp } from './lib/sky'
-import { SPECTRAL_FEATURES, type SpectralFeatureId } from './lib/spectral'
+import {
+  CHALLENGE_TARGETS,
+  DEFAULT_BAND_INDEX,
+  normalizeBands,
+  primaryFromBands,
+  SPECTRAL_FEATURES,
+  type SpectralFeatureId,
+} from './lib/spectral'
 import {
   readUrlState,
   useWiseViewUrlState,
@@ -116,6 +125,9 @@ export default function App() {
   const [pmra, setPmra] = useState<number>(() => wiseState.pmra)
   const [pmdec, setPmdec] = useState<number>(() => wiseState.pmdec)
   const [liveMatches, setLiveMatches] = useState<Map<string, KnownCatalogObject>>(new Map())
+  const [bands, setBands] = useState<number[]>([initialUrl.query?.bands?.[0] ?? DEFAULT_BAND_INDEX])
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [openDropdown, setOpenDropdown] = useState<'mode' | 'layers' | 'track' | 'ir' | 'tools' | null>(null)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -125,12 +137,60 @@ export default function App() {
   const runSearch = useCallback(
     (q: RegionQuery) => {
       setLastQuery(q)
+      if (q.bands?.length) setBands(q.bands)
       analysis.start(q)
     },
     [analysis.start],
   )
 
-  // No auto-lanzar análisis al cargar/recargar: la URL solo rellena el formulario.
+  const handleBandChange = useCallback(
+    (newBands: number[]) => {
+      setBands(newBands)
+      if (lastQuery) {
+        const primary = primaryFromBands(newBands)
+        const updated: RegionQuery = {
+          ...lastQuery,
+          bands: newBands,
+          bandpass: primary.bandpass,
+          group: primary.group,
+        }
+        runSearch(updated)
+      }
+    },
+    [lastQuery, runSearch],
+  )
+
+  // Carga automática inicial: se activa solo una vez que el usuario ha ingresado a la app
+  const hasAutoSearched = useRef(false)
+  useEffect(() => {
+    if (!entered || hasAutoSearched.current) return
+    hasAutoSearched.current = true
+
+    // Si ya vino una consulta en la URL (ej: localhost:5173/?ra=...), ejecutar esa
+    if (initialUrl.query) {
+      setLastQuery(initialUrl.query)
+      if (initialUrl.query.bands?.length) setBands(initialUrl.query.bands)
+      analysis.start(initialUrl.query)
+      return
+    }
+
+    const defaultTarget = CHALLENGE_TARGETS[CHALLENGE_TARGETS.length - 1] // R Draconis
+    const defaultQuery: RegionQuery = {
+      ...defaultTarget.query,
+      qr: 'qr2',
+    }
+    const targetBands = normalizeBands(defaultQuery.bands, defaultQuery.bandpass, defaultQuery.group)
+    const primary = primaryFromBands(targetBands)
+    const queryToRun: RegionQuery = {
+      ...defaultQuery,
+      bands: targetBands,
+      bandpass: primary.bandpass,
+      group: primary.group,
+    }
+    setBands(targetBands)
+    setExternalQuery(queryToRun)
+    runSearch(queryToRun)
+  }, [entered, initialUrl.query, runSearch, analysis.start])
 
   // Nuevo resultado: restablecer vista (o aplicar la de una URL compartida).
   useEffect(() => {
@@ -289,11 +349,14 @@ export default function App() {
     let active = true
 
     const mjd = (observations[0]?.metadata?.mjd as number) || 60000.0
-    Promise.all([
+    const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+    const fetchCatalogs = Promise.all([
       fetchGaiaHighPMStars(lastQuery.ra, lastQuery.dec, 150),
       fetchKnownAsteroidsSkyBoT(lastQuery.ra, lastQuery.dec, mjd, 200),
       fetchNEOSSatObservations(lastQuery.ra, lastQuery.dec, 300),
     ])
+
+    Promise.race([fetchCatalogs, timeoutPromise])
       .then(([gaiaList, skybotList, neossatList]) => {
         if (!active) return
         const map = new Map<string, KnownCatalogObject>()
@@ -330,7 +393,7 @@ export default function App() {
         }
         setLiveMatches(map)
       })
-      .catch(() => {})
+      .catch(() => { })
 
     return () => {
       active = false
@@ -392,294 +455,362 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="topbar">
-        <button
-          type="button"
-          className="brand brand-btn"
-          onClick={() => {
-            try {
-              sessionStorage.removeItem(ENTERED_KEY)
-            } catch {
-              // ignore
-            }
-            setEntered(false)
-          }}
-          title={t('home.backHome')}
-        >
-          <img className="logo-img" src="/team-logo.jpg" alt="" width={36} height={36} />
-          <div>
-            <h1>{t('app.title')}</h1>
-            <p className="muted small">{t('app.subtitle')}</p>
-          </div>
-        </button>
-        <div className="topbar-right">
-          {analysis.info && (
-            <span className={`pill status-pill phase-${phase}`}>
-              {analysis.info.id} · {t(`phase.${phase}`)}
-            </span>
-          )}
-          <nav className="topnav">
-            <button className="nav-btn" onClick={() => setModal('intro')} title={t('nav.intro')}>
-              ✦ <span>{t('nav.intro')}</span>
-            </button>
-            <button className="nav-btn" onClick={() => setModal('guide')} title={t('nav.guide')}>
-              🧭 <span>{t('nav.guide')}</span>
-            </button>
-            <button className="nav-btn" onClick={() => setModal('help')} title={t('nav.help')}>
-              ⌨
-            </button>
-            <button className="nav-btn" onClick={() => setModal('about')} title={t('nav.about')}>
-              ⓘ
-            </button>
-          </nav>
-          <LanguageSelector />
-        </div>
-      </header>
+      <NavigationDrawer
+        isOpen={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onOpenModal={(m) => setModal(m)}
+        onSelectTarget={(query) => {
+          const newBands = normalizeBands(query.bands, query.bandpass, query.group)
+          setBands(newBands)
+          const primary = primaryFromBands(newBands)
+          setExternalQuery(query)
+          runSearch({
+            ...query,
+            bands: newBands,
+            bandpass: primary.bandpass,
+            group: primary.group,
+          })
+        }}
+      />
 
-      <aside className="sidebar left">
-        <SearchPanel busy={busy} onSubmit={runSearch} externalQuery={externalQuery} />
-      </aside>
-
-      <main className="center" ref={centerRef}>
-        <div className="toolbar">
-          <div className="segmented">
-            {VIEW_MODES.map((m) => (
-              <button
-                key={m}
-                className={mode === m ? 'active' : ''}
-                onClick={() => setMode(m)}
-                disabled={!view || (m === 'swipe' && !canSwipe)}
-                title={m === 'swipe' && !canSwipe ? t('toolbar.swipeNeedsEpochs') : undefined}
-              >
-                <span className="mode-icon">{MODE_ICON[m]}</span> {t(`modes.${m}`)}
-              </button>
-            ))}
-          </div>
-          <div className="toggles">
-            <label>
-              <input type="checkbox" checked={showOverlays} onChange={(e) => setShowOverlays(e.target.checked)} />
-              {t('toolbar.candidates')}
-            </label>
-            <label>
-              <input type="checkbox" checked={showTrajectories} onChange={(e) => setShowTrajectories(e.target.checked)} disabled={!showOverlays} />
-              {t('toolbar.trajectories')}
-            </label>
-            <label>
-              <input type="checkbox" checked={showKnown} onChange={(e) => setShowKnown(e.target.checked)} />
-              {t('toolbar.known')}
-            </label>
-            <label>
-              <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
-              {t('toolbar.grid')}
-            </label>
-            <label style={{ fontWeight: 'bold', color: diffMode ? '#38bdf8' : 'inherit' }} title="Resta de mediana temporal (WiseView): elimina estrellas fijas y luz zodiacal">
-              <input
-                type="checkbox"
-                checked={diffMode}
-                onChange={(e) => {
-                  const val = e.target.checked
-                  setDiffMode(val)
-                  setWiseState({ diff: val })
-                }}
-              />
-              ✨ Diff (Sin Estrellas)
-            </label>
-            <div className="track-stack-inputs" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#94a3b8' }}>
-              <span>Track & Stack:</span>
-              <input
-                type="number"
-                placeholder="PM RA"
-                value={pmra || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 0
-                  setPmra(val)
-                  setWiseState({ pmra: val })
-                }}
-                style={{ width: '56px', background: '#0b1021', border: '1px solid #334155', color: '#f8fafc', borderRadius: '4px', padding: '1px 4px', fontSize: '11px' }}
-                title="Movimiento Propio en RA (mas/año)"
-              />
-              <input
-                type="number"
-                placeholder="PM Dec"
-                value={pmdec || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 0
-                  setPmdec(val)
-                  setWiseState({ pmdec: val })
-                }}
-                style={{ width: '56px', background: '#0b1021', border: '1px solid #334155', color: '#f8fafc', borderRadius: '4px', padding: '1px 4px', fontSize: '11px' }}
-                title="Movimiento Propio en Dec (mas/año)"
-              />
-            </div>
-          </div>
-          <div className="toggles feature-toggles" title={t('toolbar.layersHint')}>
-            <span className="toggles-label">{t('toolbar.layers')}</span>
-            {SPECTRAL_FEATURES.map((f) => {
-              const on = activeFeatures.includes(f.id)
-              const available = images?.featureLayers?.some((l) => l.id === f.id)
-              return (
-                <label key={f.id} className={`feature-toggle feature-${f.id} ${!available ? 'unavailable' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={!available}
-                    onChange={(e) => {
-                      const on = e.target.checked
-                      setActiveFeatures((cur) => (on ? [...cur, f.id] : cur.filter((id) => id !== f.id)))
-                      if (on) showToast(t(`search.features.${f.id}On`))
-                    }}
-                  />
-                  {t(`search.features.${f.id}`)}
-                </label>
-              )
-            })}
-          </div>
-          <div className="tools">
-            <ImageControls settings={imageSettings} onChange={setImageSettings} colorApplicable={view?.colorApplicable ?? true} />
-            <button className="tool-btn" onClick={copyLink} disabled={!lastQuery} title={t('toolbar.copyLink')}>
-              🔗
-            </button>
-            <button className="tool-btn" onClick={onExportGif} disabled={!view || exporting} title={t('toolbar.exportGif')}>
-              {exporting ? '…' : 'GIF'}
-            </button>
-            <button className="tool-btn" onClick={toggleFullscreen} title={t('toolbar.fullscreen')}>
-              ⛶
-            </button>
-          </div>
-        </div>
-
-        <SkyViewer
-          imageUrl={baseUrl}
-          compareUrl={swipeOn ? compareUrl : null}
-          compareLabels={view?.compareLabels}
-          imageFilter={imageFilter}
-          width={Math.max(1, images?.width ?? 64)}
-          height={Math.max(1, images?.height ?? 64)}
-          pixelScaleArcsec={images?.pixelScaleArcsec ?? 6.2}
-          region={analysis.info?.region ?? null}
-          candidates={candidates}
-          knownObjects={knownObjects}
-          activeObservationId={displayed?.id ?? null}
-          selectedCandidateId={selectedCandidateId}
-          onSelectCandidate={setSelectedCandidateId}
-          showOverlays={showOverlays}
-          showTrajectories={showTrajectories}
-          showKnown={showKnown}
-          showGrid={showGrid}
-          featureLayers={images?.featureLayers}
-          activeFeatureIds={activeFeatures}
-          crossfade={mode === 'original'}
-          pmShift={pmShift}
-          badge={view?.badge}
-          placeholder={
-            <StatusView
-              phase={phase}
-              progress={analysis.info?.progress}
-              message={analysis.info?.message}
-              error={analysis.error}
-              onRetry={lastQuery ? () => runSearch(lastQuery) : undefined}
-            />
+      <SearchPanel
+        busy={busy}
+        bands={bands}
+        onBandsChange={setBands}
+        onSubmit={runSearch}
+        externalQuery={externalQuery}
+        onOpenMenu={() => setMenuOpen(true)}
+        onBackHome={() => {
+          try {
+            sessionStorage.removeItem(ENTERED_KEY)
+          } catch {
+            // ignore
           }
-        />
+          setEntered(false)
+        }}
+      />
 
-        {displayed && (
-          <div className="obs-info">
-            <div>
-              <span className="label">{t('obsInfo.date')}</span>
-              {formatTimestamp(displayed.timestamp)}
-            </div>
-            <div>
-              <span className="label">{t('obsInfo.detector')}</span>
-              {displayed.detector}
-            </div>
-            <div>
-              <span className="label">{t('obsInfo.channel')}</span>
-              {Array.isArray(displayed.metadata?.bands)
-                ? t('obsInfo.bandsCount', { n: (displayed.metadata.bands as number[]).length })
-                : typeof displayed.metadata?.group === 'number'
-                  ? displayed.metadata.group
-                  : (lastQuery?.group ?? '—')}
-            </div>
-            <div>
-              <span className="label">{t('obsInfo.wavelength')}</span>
-              {displayed.wavelength?.toFixed(4) ?? '—'}
-              {displayed.bandwidth ? ` ± ${(displayed.bandwidth / 2).toFixed(4)}` : ''} {displayed.spectral_unit}
-            </div>
-            <div>
-              <span className="label">{t('obsInfo.invalidPixels')}</span>
-              {displayed.n_invalid_pixels ?? '—'}
-            </div>
-            <div className="ellipsis" title={displayed.fits_source}>
-              <span className="label">{t('obsInfo.id')}</span>
-              {displayed.id}
-            </div>
-          </div>
-        )}
-
-        <div className="playback">
-          <Filmstrip
-            observations={observations}
-            epochs={images?.epochs ?? []}
-            activeIndex={activeIndex}
-            referenceIndex={referenceIndex}
-            onSelect={setActiveIndex}
-          />
-          <Timeline observations={observations} activeIndex={activeIndex} referenceIndex={referenceIndex} onSelect={setActiveIndex} />
-          <div className="controls">
-            <button className="btn" onClick={() => step(-1)} disabled={!view || observations.length < 2}>
-              {t('playback.previous')}
-            </button>
-            <button
-              className="btn primary"
-              onClick={() => setPlaying((p) => !p)}
-              disabled={!view || observations.length < 2}
+      <div className="workspace-columns">
+        <main className="center" ref={centerRef}>
+          {/* Barra de herramientas ubicada encima del visor, separada en las 5 ventanas desplegables */}
+          <div className="toolbar-dropdowns-bar">
+            {/* 1. Modo de Vista (Original, Swipe, Blink) */}
+            <HeaderDropdownTab
+              label={`Modo: ${t(`modes.${mode}`)}`}
+              isOpen={openDropdown === 'mode'}
+              onToggle={() => setOpenDropdown((cur) => (cur === 'mode' ? null : 'mode'))}
             >
-              {playing ? t('playback.pause') : t('playback.play')}
-            </button>
-            <button className="btn" onClick={() => step(1)} disabled={!view || observations.length < 2}>
-              {t('playback.next')}
-            </button>
-            <div className="speed" title={t('playback.speed')}>
-              {SPEEDS.map((s, i) => (
-                <button
-                  key={s.label}
-                  type="button"
-                  className={`chip ${speedLevel === i ? 'active' : ''}`}
-                  onClick={() => setSpeedLevel(i)}
-                  disabled={!view || observations.length < 2}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            {swipeOn && (
-              <button
-                className="btn ghost"
-                onClick={() => setReferenceIndex(activeIndex)}
-                disabled={!view}
-                title={t('playback.setReferenceHint')}
-              >
-                {t('playback.setReference')}
-              </button>
-            )}
-          </div>
-        </div>
-      </main>
+              <div className="dropdown-panel-content">
+                <div className="segmented mode-segmented-dropdown">
+                  {VIEW_MODES.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className={`mode-dropdown-btn ${mode === m ? 'active' : ''}`}
+                      onClick={() => {
+                        setMode(m)
+                        setOpenDropdown(null)
+                      }}
+                      disabled={!view || (m === 'swipe' && !canSwipe)}
+                      title={m === 'swipe' && !canSwipe ? t('toolbar.swipeNeedsEpochs') : undefined}
+                    >
+                      <span className="mode-icon">{MODE_ICON[m]}</span>
+                      <span>{t(`modes.${m}`)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </HeaderDropdownTab>
 
-      <aside className="sidebar right">
-        <CandidateList
-          candidates={candidates}
-          selectedId={selectedCandidateId}
-          onSelect={setSelectedCandidateId}
-          knownMatches={knownMatches}
-          liveCatalogMatches={liveMatches}
-        />
-        <CandidateDetails
-          candidate={selectedCandidate}
-          knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
-          liveCatalogMatch={selectedCandidate ? liveMatches.get(selectedCandidate.id) ?? null : null}
-        />
-      </aside>
+            {/* 2. Capas y Detección (Candidates, Trajectories, Known, Grid, Diff) */}
+            <HeaderDropdownTab
+              label="Capas y Detección"
+              isOpen={openDropdown === 'layers'}
+              onToggle={() => setOpenDropdown((cur) => (cur === 'layers' ? null : 'layers'))}
+            >
+              <div className="dropdown-panel-content">
+                <div className="toggles-column">
+                  <label>
+                    <input type="checkbox" checked={showOverlays} onChange={(e) => setShowOverlays(e.target.checked)} />
+                    {t('toolbar.candidates')}
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={showTrajectories} onChange={(e) => setShowTrajectories(e.target.checked)} disabled={!showOverlays} />
+                    {t('toolbar.trajectories')}
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={showKnown} onChange={(e) => setShowKnown(e.target.checked)} />
+                    {t('toolbar.known')}
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+                    {t('toolbar.grid')}
+                  </label>
+                  <label style={{ fontWeight: 'bold', color: diffMode ? '#38bdf8' : 'inherit' }} title="Resta de mediana temporal (WiseView): elimina estrellas fijas y luz zodiacal">
+                    <input
+                      type="checkbox"
+                      checked={diffMode}
+                      onChange={(e) => {
+                        const val = e.target.checked
+                        setDiffMode(val)
+                        setWiseState({ diff: val })
+                      }}
+                    />
+                    ✨ Diff (Sin Estrellas)
+                  </label>
+                </div>
+              </div>
+            </HeaderDropdownTab>
+
+            {/* 3. Track & Stack (PM RA / PM Dec) */}
+            <HeaderDropdownTab
+              label="Track & Stack"
+              isOpen={openDropdown === 'track'}
+              onToggle={() => setOpenDropdown((cur) => (cur === 'track' ? null : 'track'))}
+            >
+              <div className="dropdown-panel-content">
+                <div className="track-stack-box">
+                  <span className="track-label">Movimiento Propio (mas/año):</span>
+                  <div className="track-inputs-row">
+                    <label className="track-field">
+                      <span>PM RA:</span>
+                      <input
+                        type="number"
+                        placeholder="mas/año"
+                        value={pmra || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          setPmra(val)
+                          setWiseState({ pmra: val })
+                        }}
+                      />
+                    </label>
+                    <label className="track-field">
+                      <span>PM Dec:</span>
+                      <input
+                        type="number"
+                        placeholder="mas/año"
+                        value={pmdec || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          setPmdec(val)
+                          setWiseState({ pmdec: val })
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </HeaderDropdownTab>
+
+            {/* 4. Capas IR (Hydrogen, Gases / ices, Dust) */}
+            <HeaderDropdownTab
+              label="IR Layers"
+              isOpen={openDropdown === 'ir'}
+              onToggle={() => setOpenDropdown((cur) => (cur === 'ir' ? null : 'ir'))}
+            >
+              <div className="dropdown-panel-content">
+                <div className="toggles-column feature-toggles-col">
+                  {SPECTRAL_FEATURES.map((f) => {
+                    const on = activeFeatures.includes(f.id)
+                    const available = images?.featureLayers?.some((l) => l.id === f.id)
+                    return (
+                      <label key={f.id} className={`feature-toggle feature-${f.id} ${!available ? 'unavailable' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={!available}
+                          onChange={(e) => {
+                            const on = e.target.checked
+                            setActiveFeatures((cur) => (on ? [...cur, f.id] : cur.filter((id) => id !== f.id)))
+                            if (on) showToast(t(`search.features.${f.id}On`))
+                          }}
+                        />
+                        {t(`search.features.${f.id}`)}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </HeaderDropdownTab>
+
+            {/* Herramientas directas fijadas en la esquina derecha (sin menú desplegable) */}
+            <div className="tools-direct-group">
+              <ImageControls settings={imageSettings} onChange={setImageSettings} colorApplicable={view?.colorApplicable ?? true} />
+              <button type="button" className="tool-btn" onClick={copyLink} disabled={!lastQuery} title={t('toolbar.copyLink')}>
+                🔗
+              </button>
+              <button type="button" className="tool-btn" onClick={onExportGif} disabled={!view || exporting} title={t('toolbar.exportGif')}>
+                {exporting ? '…' : 'GIF'}
+              </button>
+              <button type="button" className="tool-btn" onClick={toggleFullscreen} title={t('toolbar.fullscreen')}>
+                ⛶
+              </button>
+            </div>
+          </div>
+
+          {/* Contenedor central con la banda a la izquierda, visor en el centro e información a la derecha */}
+          <div className="viewer-central-row">
+            {/* Lado izquierdo: SPHEREx Bands 102 en formato vertical */}
+            <div className="band-picker-vertical-wrap">
+              <SpectralBandPicker selected={bands} disabled={busy} onChange={handleBandChange} />
+            </div>
+
+            {/* Centro: Visor de cielo */}
+            <div className="viewer-col">
+              <SkyViewer
+                imageUrl={baseUrl}
+                compareUrl={swipeOn ? compareUrl : null}
+                compareLabels={view?.compareLabels}
+                imageFilter={imageFilter}
+                width={Math.max(1, images?.width ?? 64)}
+                height={Math.max(1, images?.height ?? 64)}
+                pixelScaleArcsec={images?.pixelScaleArcsec ?? 6.2}
+                region={analysis.info?.region ?? null}
+                candidates={candidates}
+                knownObjects={knownObjects}
+                activeObservationId={displayed?.id ?? null}
+                selectedCandidateId={selectedCandidateId}
+                onSelectCandidate={setSelectedCandidateId}
+                showOverlays={showOverlays}
+                showTrajectories={showTrajectories}
+                showKnown={showKnown}
+                showGrid={showGrid}
+                featureLayers={images?.featureLayers}
+                activeFeatureIds={activeFeatures}
+                crossfade={mode === 'original'}
+                pmShift={pmShift}
+                badge={view?.badge}
+                placeholder={
+                  <StatusView
+                    phase={phase}
+                    progress={analysis.info?.progress}
+                    message={analysis.info?.message}
+                    error={analysis.error}
+                    onRetry={lastQuery ? () => runSearch(lastQuery) : undefined}
+                  />
+                }
+              />
+            </div>
+
+            {/* Lado derecho: Información de la observación (o espacio reservado para centrado simétrico) */}
+            <div className={`obs-info-vertical ${!displayed ? 'obs-placeholder' : ''}`}>
+              {displayed && (
+                <>
+                  <div className="obs-info-card">
+                    <span className="label">{t('obsInfo.date')}</span>
+                    <span className="value">{formatTimestamp(displayed.timestamp)}</span>
+                  </div>
+                  <div className="obs-info-card">
+                    <span className="label">{t('obsInfo.detector')}</span>
+                    <span className="value">{displayed.detector}</span>
+                  </div>
+                  <div className="obs-info-card">
+                    <span className="label">{t('obsInfo.channel')}</span>
+                    <span className="value">
+                      {Array.isArray(displayed.metadata?.bands)
+                        ? t('obsInfo.bandsCount', { n: (displayed.metadata.bands as number[]).length })
+                        : typeof displayed.metadata?.group === 'number'
+                          ? displayed.metadata.group
+                          : (lastQuery?.group ?? '—')}
+                    </span>
+                  </div>
+                  <div className="obs-info-card">
+                    <span className="label">{t('obsInfo.wavelength')}</span>
+                    <span className="value">
+                      {displayed.wavelength?.toFixed(4) ?? '—'}
+                      {displayed.bandwidth ? ` ± ${(displayed.bandwidth / 2).toFixed(4)}` : ''} {displayed.spectral_unit}
+                    </span>
+                  </div>
+                  <div className="obs-info-card">
+                    <span className="label">{t('obsInfo.invalidPixels')}</span>
+                    <span className="value">{displayed.n_invalid_pixels ?? '—'}</span>
+                  </div>
+                  <div className="obs-info-card" title={displayed.fits_source}>
+                    <span className="label">{t('obsInfo.id')}</span>
+                    <span className="value ellipsis">{displayed.id}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="playback playback-single-line">
+            {/* Controles de reproducción Play/Pause/Prev/Next */}
+            <div className="controls-group">
+              <button type="button" className="btn playback-icon-btn" onClick={() => step(-1)} disabled={!view || observations.length < 2} title={t('playback.previous')}>
+                ◀
+              </button>
+              <button
+                type="button"
+                className="btn primary playback-play-btn"
+                onClick={() => setPlaying((p) => !p)}
+                disabled={!view || observations.length < 2}
+              >
+                {playing ? '❚❚' : '▶ Play'}
+              </button>
+              <button type="button" className="btn playback-icon-btn" onClick={() => step(1)} disabled={!view || observations.length < 2} title={t('playback.next')}>
+                ▶
+              </button>
+              <div className="speed-pills">
+                {[0.5, 1, 2].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`chip speed-chip ${speedLevel === s ? 'active' : ''}`}
+                    onClick={() => setSpeedLevel(s)}
+                  >
+                    {s}×
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Miniaturas compactas de épocas */}
+            <div className="filmstrip-compact-wrap">
+              <Filmstrip
+                observations={observations}
+                epochs={images?.epochs ?? []}
+                activeIndex={activeIndex}
+                referenceIndex={referenceIndex}
+                onSelect={setActiveIndex}
+              />
+            </div>
+
+            {/* Línea de tiempo timeline estirada horizontalmente */}
+            <div className="timeline-inline-wrap">
+              <Timeline observations={observations} activeIndex={activeIndex} referenceIndex={referenceIndex} onSelect={setActiveIndex} />
+            </div>
+
+            {/* Contador y rango de fechas a la derecha */}
+            <div className="playback-meta-right">
+              <span className="epochs-count">
+                Ep. {observations.length ? activeIndex + 1 : 0}/{observations.length}
+              </span>
+              {observations.length > 0 && (
+                <span className="playback-date-range">
+                  {observations[0].timestamp.slice(0, 10)} → {observations[observations.length - 1].timestamp.slice(0, 10)}
+                </span>
+              )}
+            </div>
+          </div>
+        </main>
+
+        <aside className="sidebar right">
+          <CandidateList
+            candidates={candidates}
+            selectedId={selectedCandidateId}
+            onSelect={setSelectedCandidateId}
+            knownMatches={knownMatches}
+            liveCatalogMatches={liveMatches}
+          />
+          <CandidateDetails
+            candidate={selectedCandidate}
+            knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
+            liveCatalogMatch={selectedCandidate ? liveMatches.get(selectedCandidate.id) ?? null : null}
+          />
+        </aside>
+      </div>
 
       {toast && <div className="toast">{toast}</div>}
 

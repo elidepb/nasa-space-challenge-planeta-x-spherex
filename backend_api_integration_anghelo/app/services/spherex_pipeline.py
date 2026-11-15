@@ -287,6 +287,7 @@ def process_region_in_memory(
     candidates = detect_moving_candidates(residual_cube, valid_epochs, ref_wcs)
 
     # 5. Pack response with both original and residual PNGs (0 files written to disk)
+    h_out, w_out = ref_shape
     epochs_out = []
     for idx, obs in enumerate(valid_epochs):
         mjd = getattr(obs, "time_mjd", 0.0)
@@ -306,6 +307,8 @@ def process_region_in_memory(
         "dec": dec,
         "size_arcsec": size_arcsec,
         "band": band,
+        "width": int(w_out),
+        "height": int(h_out),
         "wcs_header": dict(ref_wcs.to_header()) if ref_wcs else {},
         "epochs": epochs_out,
         "candidates": candidates,
@@ -320,6 +323,8 @@ def detect_moving_candidates(
     """Detects SNR > 4.5 peaks in residual epochs and connects trajectories."""
     if len(residual_cube) < 2 or wcs is None:
         return []
+
+    h_img = residual_cube[0].shape[0]
 
     res_first = gaussian_filter(np.nan_to_num(residual_cube[0]), sigma=1.2)
     res_last = gaussian_filter(np.nan_to_num(residual_cube[-1]), sigma=1.2)
@@ -353,14 +358,18 @@ def detect_moving_candidates(
                 pm_total = sep_arcsec / dt_years
                 snr_peak = float(max(np.max(snr_first[labels_1 == i]), np.max(snr_last[labels_2 == j])))
 
+                # Flip y to match PNG orientation (array_to_base64_png uses np.flipud)
+                img_y1 = (h_img - 1) - float(y1)
+                img_y2 = (h_img - 1) - float(y2)
+
                 candidates.append({
                     "id": f"CAND-{len(candidates)+1:02d}",
                     "ra_deg": float(c2.ra.deg),
                     "dec_deg": float(c2.dec.deg),
                     "x1_px": float(x1),
-                    "y1_px": float(y1),
+                    "y1_px": img_y1,
                     "x2_px": float(x2),
-                    "y2_px": float(y2),
+                    "y2_px": img_y2,
                     "snr": round(snr_peak, 2),
                     "displacement_arcsec": round(float(sep_arcsec), 2),
                     "velocity_arcsec_yr": round(float(pm_total), 2),

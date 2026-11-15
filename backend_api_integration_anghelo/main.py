@@ -15,7 +15,7 @@ for _pkg in ("spherex_data_pipeline_elide", "scientific_motion_engine_etner"):
     if _pkg_path not in sys.path:
         sys.path.insert(0, _pkg_path)
 
-from app.routers import spectral_analysis
+from app.routers import spectral_analysis, analysis
 
 app = FastAPI(
     title="SPHEREx Planet X - Rapid Engine API",
@@ -31,6 +31,8 @@ app.add_middleware(
 )
 
 app.include_router(spectral_analysis.router, prefix="/api/v1")
+app.include_router(analysis.router, prefix="/api/v1")
+
 
 
 @app.get("/health", tags=["health"])

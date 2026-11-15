@@ -47,21 +47,24 @@ export function SpectralBandPicker({ selected, disabled, onChange }: Props) {
     dragging.current = false
   }
 
-  const readout = hover
-    ? t('search.bandsHover', { n: hover.index, lambda: hover.lambda.toFixed(3) })
-    : t('search.bandsPrimary', {
-        band: `#${primary.bandIndex}`,
-        index: primary.bandIndex,
-        lambda: primary.wlCenter.toFixed(3),
-      })
+  const badgeReadout = hover
+    ? `#${hover.index} · ${hover.lambda.toFixed(3)} μm`
+    : `#${primary.bandIndex} · ${primary.wlCenter.toFixed(3)} μm★`
 
   return (
     <div className={`spectral-picker ${disabled ? 'disabled' : ''}`}>
       <div className="spectral-picker-head">
-        <span className="spectral-ruler-title">{t('search.bandsTitle')}</span>
-        <span className="spectral-ruler-readout">
-          {t('search.bandsSelected', { n: sorted.length, max: MAX_SELECTED_BANDS, total: TOTAL_BANDS })}
-        </span>
+        <div className="spectral-picker-head-left">
+          <span className="spectral-ruler-title">SPHEREX BANDS · 102</span>
+          <span className="spectral-ruler-readout">
+            {t('search.bandsSelected', { n: sorted.length, max: MAX_SELECTED_BANDS, total: TOTAL_BANDS })}
+          </span>
+        </div>
+        <div className="spectral-picker-head-right">
+          <span className="chip spectral-selected-chip active">
+            {badgeReadout}
+          </span>
+        </div>
       </div>
 
       <div
@@ -95,22 +98,10 @@ export function SpectralBandPicker({ selected, disabled, onChange }: Props) {
         </div>
         <div className="spectral-spectrum-labels">
           <span>#1 · 0.75 μm</span>
+          <span className="spectral-hint-text">{t('search.bandsHint', { max: MAX_SELECTED_BANDS })}</span>
           <span>#102 · 5.0 μm</span>
         </div>
       </div>
-
-      <p className="spectral-rail-readout muted small">{readout}</p>
-      <p className="muted small">{t('search.bandsHint', { max: MAX_SELECTED_BANDS })}</p>
-
-      {sorted.length > 0 && (
-        <div className="spectral-selected-list compact">
-          {sorted.map((i) => (
-            <span key={i} className="chip spectral-selected-chip active">
-              #{i} ★
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

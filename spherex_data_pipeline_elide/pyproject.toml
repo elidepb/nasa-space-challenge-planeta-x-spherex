@@ -12,6 +12,9 @@ dependencies = [
     "numpy>=1.26",
     "astropy>=6.0",
     "pyvo>=1.5",
+    "s3fs>=2024.1.0",
+    "fsspec>=2024.1.0",
+    "reproject>=0.13",
 ]
 
 [project.optional-dependencies]
