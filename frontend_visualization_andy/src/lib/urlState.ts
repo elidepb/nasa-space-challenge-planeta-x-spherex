@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react'
 import type { RegionQuery } from '../types/contracts'
 import {
   DEFAULT_BANDPASS,
@@ -7,8 +8,8 @@ import {
   primaryFromBands,
 } from './spectral'
 
-export type ViewMode = 'original' | 'swipe'
-export const VIEW_MODES: ViewMode[] = ['original', 'swipe']
+export type ViewMode = 'original' | 'swipe' | 'blink'
+export const VIEW_MODES: ViewMode[] = ['original', 'swipe', 'blink']
 
 export interface UrlState {
   query: RegionQuery | null
@@ -84,4 +85,81 @@ export function writeUrlState(state: UrlState) {
   if (url !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
     window.history.replaceState(null, '', url)
   }
+}
+
+// ============================================================================
+// WiseView-Style Hash State Synchronizer (#ra=...&dec=...&diff=1&pmra=...)
+// ============================================================================
+
+export interface ViewerUrlState {
+  ra: number
+  dec: number
+  band: string
+  mode: 'original' | 'swipe' | 'blink'
+  diff: boolean // Activa la imagen residual (sin estrellas fijas)
+  gaia: boolean // Muestra overlay de Gaia DR3
+  pmra: number // Desplazamiento Track & Stack en RA (mas/yr)
+  pmdec: number // Desplazamiento Track & Stack en Dec (mas/yr)
+  speed: number // Velocidad del blink en ms
+}
+
+const DEFAULT_WISE_STATE: ViewerUrlState = {
+  ra: 133.7862,
+  dec: -7.2443,
+  band: 'D1',
+  mode: 'blink',
+  diff: false,
+  gaia: true,
+  pmra: 0,
+  pmdec: 0,
+  speed: 500,
+}
+
+export function useWiseViewUrlState(): [ViewerUrlState, (patch: Partial<ViewerUrlState>) => void] {
+  const parseHash = (): ViewerUrlState => {
+    const raw = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
+    const params = new URLSearchParams(raw)
+    return {
+      ra: parseFloat(params.get('ra') || '') || DEFAULT_WISE_STATE.ra,
+      dec: parseFloat(params.get('dec') || '') || DEFAULT_WISE_STATE.dec,
+      band: params.get('band') || DEFAULT_WISE_STATE.band,
+      mode: (params.get('mode') as ViewerUrlState['mode']) || DEFAULT_WISE_STATE.mode,
+      diff: params.get('diff') === '1',
+      gaia: params.get('gaia') !== '0',
+      pmra: parseFloat(params.get('pmra') || '0'),
+      pmdec: parseFloat(params.get('pmdec') || '0'),
+      speed: parseInt(params.get('speed') || '500', 10),
+    }
+  }
+
+  const [state, setState] = useState<ViewerUrlState>(parseHash)
+
+  const updateState = useCallback((patch: Partial<ViewerUrlState>) => {
+    setState((prev) => {
+      const next = { ...prev, ...patch }
+      const params = new URLSearchParams()
+      params.set('ra', next.ra.toFixed(6))
+      params.set('dec', next.dec.toFixed(6))
+      params.set('band', next.band)
+      params.set('mode', next.mode)
+      params.set('diff', next.diff ? '1' : '0')
+      params.set('gaia', next.gaia ? '1' : '0')
+      if (next.pmra !== 0) params.set('pmra', String(next.pmra))
+      if (next.pmdec !== 0) params.set('pmdec', String(next.pmdec))
+      params.set('speed', String(next.speed))
+
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `#${params.toString()}`)
+      }
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const onHashChange = () => setState(parseHash())
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  return [state, updateState]
 }

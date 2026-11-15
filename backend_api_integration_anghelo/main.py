@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
+import sys
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.core.cache import ensure_data_volumes
-from app.core.config import settings
+# Ensure sibling packages (Elide and Etner) are on sys.path
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _pkg in ("spherex_data_pipeline_elide", "scientific_motion_engine_etner"):
+    _pkg_path = str(_PROJECT_ROOT / _pkg)
+    if _pkg_path not in sys.path:
+        sys.path.insert(0, _pkg_path)
+
 from app.routers import spectral_analysis
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001 - app kept for FastAPI signature
-    ensure_data_volumes()
-    yield
-
-
 app = FastAPI(
-    title="Backend API Integration — SPHEREx Planet X",
-    version="0.1.0",
-    lifespan=lifespan,
+    title="SPHEREx Planet X - Rapid Engine API",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -37,11 +35,9 @@ app.include_router(spectral_analysis.router, prefix="/api/v1")
 
 @app.get("/health", tags=["health"])
 async def health():
-    return {"status": "ok", "storage_type": settings.STORAGE_TYPE}
+    return {"status": "ok", "mode": "in-memory-temporal-median"}
 
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request, exc):  # noqa: ARG001
-    from fastapi.responses import JSONResponse
-
     return JSONResponse(status_code=400, content={"detail": str(exc)})

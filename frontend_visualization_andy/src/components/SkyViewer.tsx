@@ -35,6 +35,7 @@ interface Props {
   crossfade?: boolean
   badge?: ReactNode
   placeholder?: ReactNode
+  pmShift?: { x: number; y: number }
 }
 
 const CROSSFADE_MS = 1000
@@ -261,7 +262,12 @@ export function SkyViewer(props: Props) {
         onPointerLeave={() => setHover(null)}
         onDoubleClick={() => setView(IDENTITY)}
       >
-        <div className="viewer-content" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+        <div
+          className="viewer-content"
+          style={{
+            transform: `translate(${view.x - (props.pmShift?.x ?? 0)}px, ${view.y + (props.pmShift?.y ?? 0)}px) scale(${view.k})`,
+          }}
+        >
           {shownUrl && (
             <img
               src={shownUrl}

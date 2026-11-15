@@ -8,13 +8,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - STORAGE_TYPE=memory
-      - CACHE_DIR=/app/backend_api_integration_anghelo/data/cache
-      - IMAGES_DIR=/app/backend_api_integration_anghelo/data/images
-      - CACHE_TTL_HOURS=24
+      - PYTHONUNBUFFERED=1
     volumes:
-      # Código fuente en tiempo real (hot reload)
       - ../backend_api_integration_anghelo:/app/backend_api_integration_anghelo
-      - ./backend_api_integration_anghelo/data/cache:/app/backend_api_integration_anghelo/data/cache
-      - ./backend_api_integration_anghelo/data/images:/app/backend_api_integration_anghelo/data/images
+      - ../spherex_data_pipeline_elide:/app/spherex_data_pipeline_elide
+      - ../scientific_motion_engine_etner:/app/scientific_motion_engine_etner
     command: ["fastapi", "run", "main.py", "--host", "0.0.0.0", "--port", "8000", "--reload"]

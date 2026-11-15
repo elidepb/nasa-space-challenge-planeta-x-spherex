@@ -14,7 +14,13 @@ import { useAnalysis } from './hooks/useAnalysis'
 import { useProcessedImage } from './hooks/useProcessedImage'
 import { useI18n } from './i18n/I18nProvider'
 import { exportGif, type GifFrame } from './lib/gif'
-import { matchTrack } from './lib/hunter'
+import {
+  fetchGaiaHighPMStars,
+  fetchKnownAsteroidsSkyBoT,
+  fetchNEOSSatObservations,
+  matchTrack,
+  type KnownCatalogObject,
+} from './lib/hunter'
 import {
   cssFilterFor,
   DEFAULT_IMAGE_SETTINGS,
@@ -24,10 +30,17 @@ import {
 } from './lib/imageProcessing'
 import { formatTimestamp } from './lib/sky'
 import { SPECTRAL_FEATURES, type SpectralFeatureId } from './lib/spectral'
-import { readUrlState, VIEW_MODES, writeUrlState, type UrlState, type ViewMode } from './lib/urlState'
+import {
+  readUrlState,
+  useWiseViewUrlState,
+  VIEW_MODES,
+  writeUrlState,
+  type UrlState,
+  type ViewMode,
+} from './lib/urlState'
 import type { KnownObject, RegionQuery } from './types/contracts'
 
-const MODE_ICON: Record<ViewMode, string> = { original: '▣', swipe: '⇔' }
+const MODE_ICON: Record<ViewMode, string> = { original: '▣', swipe: '⇔', blink: '◐' }
 
 const SPEEDS = [
   { label: '0.5×', stepMs: 1600 },
@@ -98,6 +111,11 @@ export default function App() {
   const [modal, setModal] = useState<ModalName>(initialUrl.query || introAlreadySeen() ? null : 'intro')
   const [toast, setToast] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [wiseState, setWiseState] = useWiseViewUrlState()
+  const [diffMode, setDiffMode] = useState<boolean>(() => wiseState.diff)
+  const [pmra, setPmra] = useState<number>(() => wiseState.pmra)
+  const [pmdec, setPmdec] = useState<number>(() => wiseState.pmdec)
+  const [liveMatches, setLiveMatches] = useState<Map<string, KnownCatalogObject>>(new Map())
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -202,14 +220,13 @@ export default function App() {
     (i: number) => {
       if (!images?.epochs?.length) return null
       const obs = observations[i]
-      if (obs) {
-        const byId = images.epochs.find((e) => e.observationId === obs.id)?.url
-        if (byId) return byId
+      const ep = obs ? images.epochs.find((e) => e.observationId === obs.id) : images.epochs[i]
+      if (diffMode) {
+        return ep?.residualUrl ?? images.differences?.[i]?.url ?? ep?.url ?? null
       }
-      // Fallback: obs_id (images) ≠ id_exposicion (observations) en el wire.
-      return images.epochs[i]?.url ?? null
+      return ep?.url ?? null
     },
-    [images, observations],
+    [images, observations, diffMode],
   )
 
   const canSwipe = observations.length > 1
@@ -254,6 +271,71 @@ export default function App() {
     }
     return map
   }, [candidates, knownObjects, images])
+
+  const pmShift = useMemo(() => {
+    if ((pmra === 0 && pmdec === 0) || !observations.length || !images) return undefined
+    const firstMjd = (observations[0]?.metadata?.mjd as number) || 0
+    const currentMjd = (observations[activeIndex]?.metadata?.mjd as number) || firstMjd
+    const dtYears = firstMjd > 0 && currentMjd > 0 ? (currentMjd - firstMjd) / 365.25 : 0
+    const ps = images.pixelScaleArcsec || 6.2
+    return {
+      x: (pmra * 1e-3 * dtYears) / ps,
+      y: (pmdec * 1e-3 * dtYears) / ps,
+    }
+  }, [pmra, pmdec, observations, activeIndex, images])
+
+  useEffect(() => {
+    if (!lastQuery || candidates.length === 0) return
+    let active = true
+
+    const mjd = (observations[0]?.metadata?.mjd as number) || 60000.0
+    Promise.all([
+      fetchGaiaHighPMStars(lastQuery.ra, lastQuery.dec, 150),
+      fetchKnownAsteroidsSkyBoT(lastQuery.ra, lastQuery.dec, mjd, 200),
+      fetchNEOSSatObservations(lastQuery.ra, lastQuery.dec, 300),
+    ])
+      .then(([gaiaList, skybotList, neossatList]) => {
+        if (!active) return
+        const map = new Map<string, KnownCatalogObject>()
+
+        for (const cand of candidates) {
+          const hitSkybot = skybotList.find((ast) => {
+            const dRa = (cand.ra - ast.ra) * Math.cos((cand.dec * Math.PI) / 180)
+            const dDec = cand.dec - ast.dec
+            return Math.hypot(dRa, dDec) * 3600 < 4.0
+          })
+          if (hitSkybot) {
+            map.set(cand.id, hitSkybot)
+            continue
+          }
+
+          const hitGaia = gaiaList.find((g) => {
+            const dRa = (cand.ra - g.ra) * Math.cos((cand.dec * Math.PI) / 180)
+            const dDec = cand.dec - g.dec
+            return Math.hypot(dRa, dDec) * 3600 < 3.0
+          })
+          if (hitGaia) {
+            map.set(cand.id, hitGaia)
+            continue
+          }
+
+          const hitNeossat = neossatList.find((neo) => {
+            const dRa = (cand.ra - neo.ra) * Math.cos((cand.dec * Math.PI) / 180)
+            const dDec = cand.dec - neo.dec
+            return Math.hypot(dRa, dDec) * 3600 < 8.0
+          })
+          if (hitNeossat) {
+            map.set(cand.id, hitNeossat)
+          }
+        }
+        setLiveMatches(map)
+      })
+      .catch(() => {})
+
+    return () => {
+      active = false
+    }
+  }, [lastQuery?.ra, lastQuery?.dec, candidates, observations])
 
   async function copyLink() {
     await navigator.clipboard?.writeText(window.location.href).catch(() => undefined)
@@ -390,6 +472,45 @@ export default function App() {
               <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
               {t('toolbar.grid')}
             </label>
+            <label style={{ fontWeight: 'bold', color: diffMode ? '#38bdf8' : 'inherit' }} title="Resta de mediana temporal (WiseView): elimina estrellas fijas y luz zodiacal">
+              <input
+                type="checkbox"
+                checked={diffMode}
+                onChange={(e) => {
+                  const val = e.target.checked
+                  setDiffMode(val)
+                  setWiseState({ diff: val })
+                }}
+              />
+              ✨ Diff (Sin Estrellas)
+            </label>
+            <div className="track-stack-inputs" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#94a3b8' }}>
+              <span>Track & Stack:</span>
+              <input
+                type="number"
+                placeholder="PM RA"
+                value={pmra || ''}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0
+                  setPmra(val)
+                  setWiseState({ pmra: val })
+                }}
+                style={{ width: '56px', background: '#0b1021', border: '1px solid #334155', color: '#f8fafc', borderRadius: '4px', padding: '1px 4px', fontSize: '11px' }}
+                title="Movimiento Propio en RA (mas/año)"
+              />
+              <input
+                type="number"
+                placeholder="PM Dec"
+                value={pmdec || ''}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0
+                  setPmdec(val)
+                  setWiseState({ pmdec: val })
+                }}
+                style={{ width: '56px', background: '#0b1021', border: '1px solid #334155', color: '#f8fafc', borderRadius: '4px', padding: '1px 4px', fontSize: '11px' }}
+                title="Movimiento Propio en Dec (mas/año)"
+              />
+            </div>
           </div>
           <div className="toggles feature-toggles" title={t('toolbar.layersHint')}>
             <span className="toggles-label">{t('toolbar.layers')}</span>
@@ -448,6 +569,7 @@ export default function App() {
           featureLayers={images?.featureLayers}
           activeFeatureIds={activeFeatures}
           crossfade={mode === 'original'}
+          pmShift={pmShift}
           badge={view?.badge}
           placeholder={
             <StatusView
@@ -550,10 +672,12 @@ export default function App() {
           selectedId={selectedCandidateId}
           onSelect={setSelectedCandidateId}
           knownMatches={knownMatches}
+          liveCatalogMatches={liveMatches}
         />
         <CandidateDetails
           candidate={selectedCandidate}
           knownMatch={selectedCandidate ? knownMatches.get(selectedCandidate.id) ?? null : null}
+          liveCatalogMatch={selectedCandidate ? liveMatches.get(selectedCandidate.id) ?? null : null}
         />
       </aside>
 
