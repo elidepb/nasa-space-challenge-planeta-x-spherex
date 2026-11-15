@@ -11,9 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from spherex_pipeline import Observation, get_observations
+from spherex_pipeline.constants import DEFAULT_QR
 
-# Phase 1 always queries the quick-release catalog from IRSA.
-_QR = "qr2"
+# Phase 1 queries the current searchable SPHEREx catalog (DR1; QR2 ya no se indexa).
+_QR = DEFAULT_QR
 _SOURCE = "irsa"
 
 

@@ -11,15 +11,44 @@ IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
 IBE_SPHEREX_DATA_MARKER = "/ibe/data/spherex/"
 SPHEREX_S3_HTTPS_BASE = "https://nasa-irsa-spherex.s3.us-east-1.amazonaws.com"
 
+# DR1 + QR3 sustituyen a QR2. IRSA ya no indexa QR2 en TAP/SIA (sigue en disco hasta 2027).
 KNOWN_RELEASES = {
-    "qr2": {"sia_collection": "spherex_qr2", "uri_fragment": "/spherex/qr2/"},
-    "qr3": {"sia_collection": "spherex_qr3", "uri_fragment": "/spherex/qr3/"},
-    "qr2_deep": {"sia_collection": "spherex_qr2_deep", "uri_fragment": "/spherex/qr2_deep/"},
-    "qr3_deep": {"sia_collection": "spherex_qr3_deep", "uri_fragment": "/spherex/qr3_deep/"},
+    "dr1": {
+        "sia_collection": "spherex_dr1",
+        "uri_fragment": "/spherex/dr1/",
+        "searchable": True,
+    },
+    "dr1_deep": {
+        "sia_collection": "spherex_dr1_deep",
+        "uri_fragment": "/spherex/dr1_deep/",
+        "searchable": True,
+    },
+    "qr3": {
+        "sia_collection": "spherex_qr3",
+        "uri_fragment": "/spherex/qr3/",
+        "searchable": True,
+    },
+    "qr3_deep": {
+        "sia_collection": "spherex_qr3_deep",
+        "uri_fragment": "/spherex/qr3_deep/",
+        "searchable": True,
+    },
+    "qr2": {
+        "sia_collection": "spherex_qr2",
+        "uri_fragment": "/spherex/qr2/",
+        "searchable": False,
+        "superseded_by": "dr1",
+    },
+    "qr2_deep": {
+        "sia_collection": "spherex_qr2_deep",
+        "uri_fragment": "/spherex/qr2_deep/",
+        "searchable": False,
+        "superseded_by": "dr1_deep",
+    },
 }
 
 KNOWN_BANDPASSES = tuple(f"SPHEREx-D{i}" for i in range(1, 7))
-DEFAULT_QR = "qr2"
+DEFAULT_QR = "dr1"
 DEFAULT_BANDPASS = "SPHEREx-D4"
 DEFAULT_SOURCE = "irsa"
 DEFAULT_PIPELINE_METHOD = "spectral"

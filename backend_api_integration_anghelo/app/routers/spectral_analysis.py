@@ -30,6 +30,7 @@ from app.schemas.responses import (
     SessionStatusResponse,
 )
 from astropy.time import Time
+from spherex_pipeline.constants import DEFAULT_QR
 from spherex_pipeline.irsa import dedupe_records, query_observations
 from spherex_pipeline.spectral_select import (
     bin_records_by_surveys,
@@ -165,7 +166,7 @@ async def start_spectral_analysis(
             request.ra,
             request.dec,
             request.size_deg,
-            qr="qr2",
+            qr=DEFAULT_QR,
             bandpass=request.bandpass,
         )
         unique_records, _ = await asyncio.to_thread(dedupe_records, raw_records)
