@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,11 +36,19 @@ for _pkg in ("spherex_data_pipeline_elide", "scientific_motion_engine_etner"):
 
 from spherex_pipeline.models import Observation  # noqa: E402
 from spherex_pipeline.pipeline import get_observations  # noqa: E402
+from app.services.band_spec import (  # noqa: E402
+    TOTAL_BANDS,
+    MIN_WAVELENGTH_UM,
+    MAX_WAVELENGTH_UM,
+    BANDS_PER_DETECTOR,
+    BandSpec,
+    resolve_band_spec,
+)
 
 IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
 
 
-def array_to_base64_png(data: np.ndarray, is_diff: bool = False) -> str:
+def array_to_base64_png(data: np.ndarray, is_diff: bool = False, contrast_gain: float = 1.0) -> str:
     """Converts a 2D FITS/NumPy matrix to Base64 PNG entirely in RAM."""
     clean = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -49,11 +58,10 @@ def array_to_base64_png(data: np.ndarray, is_diff: bool = False) -> str:
         vmin, vmax = -3.0 * std, 6.0 * std
         norm = np.clip((clean - vmin) / (vmax - vmin), 0.0, 1.0)
     else:
-        # For original frames: ZScale + AsinhStretch
-        interval = ZScaleInterval()
-        vmin, vmax = interval.get_limits(clean)
-        norm_fn = ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch())
-        norm = np.clip(norm_fn(clean), 0.0, 1.0)
+        # Semi-anchored radiometric scaling to preserve brightness differences across bands
+        vmin, vmax = 0.0, 2.6
+        norm = np.clip((clean - vmin) / (vmax - vmin), 0.0, 1.0)
+        norm = np.clip(0.5 + (norm - 0.5) * contrast_gain, 0.0, 1.0)
 
     # Flip vertically (North up) and convert to 8-bit in memory
     img_uint8 = (np.flipud(norm) * 255).astype(np.uint8)
@@ -67,14 +75,126 @@ import concurrent.futures
 from astropy.time import Time
 
 
+def compute_band_modulation(band: BandSpec) -> dict[str, float]:
+    wl = band.wavelength_um
+    idx = band.band_index
+
+    # 1. Fondo zodiacal: crece hacia el infrarrojo medio con leve ondulación por banda
+    zodi_gain = (
+        0.42
+        + 0.78 * ((wl - MIN_WAVELENGTH_UM) / (MAX_WAVELENGTH_UM - MIN_WAVELENGTH_UM)) ** 1.35
+        + 0.08 * math.sin(idx * 0.55)
+    )
+
+    # 2. Poblaciones estelares: estrellas calientes dominan en λ corta, frías en λ larga
+    hot_star_gain = math.exp(-((wl - 0.90) ** 2) / 1.1) + 0.08
+    cool_star_gain = 0.25 + 0.95 * (1.0 - math.exp(-((wl - 1.65) ** 2) / 3.8))
+
+    # 3. Firma espectral de absorción tipo CH4 alrededor de 3.3 µm (bandas ~#68-#72)
+    ch4_absorption = 1.0 - 0.36 * math.exp(-((wl - 3.30) ** 2) / 0.045)
+
+    # 4. Contraste global visible al arrastrar la barra
+    contrast_gain = 0.85 + 0.35 * math.cos((idx - 1) / TOTAL_BANDS * math.pi * 2.0)
+
+    return {
+        "zodi_gain": zodi_gain,
+        "hot_star_gain": hot_star_gain,
+        "cool_star_gain": cool_star_gain,
+        "ch4_absorption": ch4_absorption,
+        "contrast_gain": contrast_gain,
+    }
+
+
 def make_synthetic_observations(
     ra: float,
     dec: float,
+    band_index: int | None = None,
+    wavelength_um: float | None = None,
+    detector: str | None = None,
+    width: int = 256,
+    height: int = 256,
+) -> dict:
+    band = resolve_band_spec(
+        band_index=band_index,
+        wavelength_um=wavelength_um,
+        detector=detector,
+    )
+    mod = compute_band_modulation(band)
+
+    # Semilla determinista por coordenada + banda específica (1..102)
+    coord_seed = int(round(ra * 1000 + dec * 100)) & 0xFFFFFFFF
+    band_seed = (band.band_index * 2654435761) ^ int(round(band.wavelength_um * 10000))
+    final_seed = (coord_seed ^ band_seed) % (2**31 - 1)
+    rng = np.random.default_rng(final_seed)
+
+    # Base espacial fija por campo (RA, Dec) para que el cielo tenga coherencia astrométrica
+    field_rng = np.random.default_rng(coord_seed % (2**31 - 1))
+    y, x = np.mgrid[0:height, 0:width].astype(np.float32)
+
+    # Fondo zodiacal con gradiente suave del campo
+    grad_x = field_rng.uniform(-0.15, 0.15) * (x / width)
+    grad_y = field_rng.uniform(-0.15, 0.15) * (y / height)
+    base_zodi = np.clip(0.30 + grad_x + grad_y, 0.05, None)
+
+    # Campo de estrellas cálidas y frías
+    hot_stars = np.zeros((height, width), dtype=np.float32)
+    cool_stars = np.zeros((height, width), dtype=np.float32)
+
+    for _ in range(35):
+        sx = int(field_rng.integers(4, width - 4))
+        sy = int(field_rng.integers(4, height - 4))
+        amp = float(field_rng.uniform(0.4, 2.2))
+        sigma = float(field_rng.uniform(1.1, 2.4))
+        psf = amp * np.exp(-((x - sx) ** 2 + (y - sy) ** 2) / (2 * sigma**2))
+        if field_rng.random() < 0.5:
+            hot_stars += psf
+        else:
+            cool_stars += psf
+
+    # Ruido térmico dependiente de la banda
+    band_noise = rng.normal(0.0, 0.035 * mod["zodi_gain"], size=(height, width)).astype(np.float32)
+
+    # Combinación espectral
+    sky_flux = (
+        base_zodi * mod["zodi_gain"] * mod["ch4_absorption"]
+        + hot_stars * mod["hot_star_gain"]
+        + cool_stars * mod["cool_star_gain"] * mod["ch4_absorption"]
+        + band_noise
+    )
+
+    # Escalado radiométrico semi-anclado para preservar cambios de brillo entre bandas
+    vmin, vmax = 0.0, 2.6
+    norm = np.clip((sky_flux - vmin) / (vmax - vmin), 0.0, 1.0)
+    norm = np.clip(0.5 + (norm - 0.5) * mod["contrast_gain"], 0.0, 1.0)
+    uint8_img = (norm * 255.0).astype(np.uint8)
+
+    return {
+        "band": band,
+        "modulation": mod,
+        "seed": final_seed,
+        "image_array": uint8_img,
+    }
+
+
+def render_sky_png(obs: dict) -> bytes:
+    img = Image.fromarray(obs["image_array"], mode="L")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def make_synthetic_epoch_observations(
+    ra: float,
+    dec: float,
     size_arcsec: float = 180.0,
-    band: str = "D1",
+    band_spec: BandSpec | None = None,
     n_epochs: int = 5,
 ) -> list[Observation]:
-    """Generates synthetic multi-epoch observations centered exactly at (ra, dec) in RAM."""
+    """Generates synthetic multi-epoch observations with band-specific spectral modulation."""
+    if band_spec is None:
+        band_spec = resolve_band_spec(1)
+    mod = compute_band_modulation(band_spec)
+
     npix = max(32, min(int(round(size_arcsec / 6.2)), 256))
     scale = (size_arcsec / npix) / 3600.0  # degrees per pixel
 
@@ -87,64 +207,83 @@ def make_synthetic_observations(
     wcs.wcs.radesys = "ICRS"
     wcs_hdr = dict(wcs.to_header())
 
-    seed = abs(int(round(ra * 1000 + dec * 100))) % (2**31 - 1)
-    rng = np.random.default_rng(seed)
+    coord_seed = int(round(ra * 1000 + dec * 100)) & 0xFFFFFFFF
+    band_seed = (band_spec.band_index * 2654435761) ^ int(round(band_spec.wavelength_um * 10000))
+    final_seed = (coord_seed ^ band_seed) % (2**31 - 1)
+    rng = np.random.default_rng(final_seed)
 
-    # 8 to 16 fixed stars with realistic Gaussian profiles
-    fixed_stars = []
-    for _ in range(rng.integers(8, 17)):
-        fixed_stars.append((rng.uniform(5, npix - 5), rng.uniform(5, npix - 5), rng.uniform(5.0, 18.0)))
+    field_rng = np.random.default_rng(coord_seed % (2**31 - 1))
+    y, x = np.mgrid[0:npix, 0:npix].astype(np.float32)
 
-    # Realistically populate 0 to 4 moving objects depending on field density
-    n_movers = int(rng.choice([0, 1, 2, 3, 4], p=[0.15, 0.35, 0.25, 0.15, 0.10]))
+    grad_x = field_rng.uniform(-0.15, 0.15) * (x / npix)
+    grad_y = field_rng.uniform(-0.15, 0.15) * (y / npix)
+    base_zodi = np.clip(0.30 + grad_x + grad_y, 0.05, None)
+
+    hot_stars = np.zeros((npix, npix), dtype=np.float32)
+    cool_stars = np.zeros((npix, npix), dtype=np.float32)
+    for _ in range(field_rng.integers(15, 30)):
+        sx = int(field_rng.integers(4, npix - 4))
+        sy = int(field_rng.integers(4, npix - 4))
+        amp = float(field_rng.uniform(0.4, 2.2))
+        sigma = float(field_rng.uniform(1.1, 2.4))
+        psf = amp * np.exp(-((x - sx) ** 2 + (y - sy) ** 2) / (2 * sigma**2))
+        if field_rng.random() < 0.5:
+            hot_stars += psf
+        else:
+            cool_stars += psf
+
+    n_movers = int(field_rng.choice([1, 2, 3], p=[0.5, 0.35, 0.15]))
     movers = []
     for _ in range(n_movers):
-        m_sy = rng.uniform(npix * 0.2, npix * 0.8)
-        m_sx = rng.uniform(npix * 0.2, npix * 0.8)
-        # Variable kinematics: slow TNO / Planet X vs fast Kuiper belt object / asteroid
-        m_vy = rng.uniform(-1.8, 1.8)
-        m_vx = rng.uniform(-1.8, 1.8)
-        m_flux = rng.uniform(5.5, 12.0)
+        m_sy = float(field_rng.uniform(npix * 0.2, npix * 0.8))
+        m_sx = float(field_rng.uniform(npix * 0.2, npix * 0.8))
+        m_vy = float(field_rng.uniform(-1.5, 1.5))
+        m_vx = float(field_rng.uniform(-1.5, 1.5))
+        m_flux = float(field_rng.uniform(0.8, 1.8))
         movers.append({"sy": m_sy, "sx": m_sx, "vy": m_vy, "vx": m_vx, "flux": m_flux})
 
     observations = []
     base_mjd = 60400.0
-    yy, xx = np.mgrid[0:npix, 0:npix]
-
     for epoch in range(n_epochs):
         mjd = base_mjd + epoch * 182.5  # ~6 months cadence
         t_iso = Time(mjd, format="mjd", scale="utc").isot
 
-        zodi = 16.0 + 0.02 * xx + 0.01 * yy
-        img = zodi + rng.normal(0.0, 0.38, size=(npix, npix)).astype(np.float32)
-
-        for fy, fx, flux in fixed_stars:
-            img += (flux * np.exp(-(((yy - fy) ** 2 + (xx - fx) ** 2) / (2.0 * 1.5**2)))).astype(np.float32)
-
+        band_noise = rng.normal(0.0, 0.035 * mod["zodi_gain"], size=(npix, npix)).astype(np.float32)
+        sky_flux = (
+            base_zodi * mod["zodi_gain"] * mod["ch4_absorption"]
+            + hot_stars * mod["hot_star_gain"]
+            + cool_stars * mod["cool_star_gain"] * mod["ch4_absorption"]
+            + band_noise
+        )
         for m in movers:
             cy = m["sy"] + epoch * m["vy"]
             cx = m["sx"] + epoch * m["vx"]
             if 2 <= cy < npix - 2 and 2 <= cx < npix - 2:
-                img += (m["flux"] * np.exp(-(((yy - cy) ** 2 + (xx - cx) ** 2) / (2.0 * 1.3**2)))).astype(np.float32)
+                m_gain = mod["cool_star_gain"] * mod["ch4_absorption"]
+                sky_flux += (m["flux"] * m_gain * np.exp(-(((y - cy) ** 2 + (x - cx) ** 2) / (2.0 * 1.3**2)))).astype(np.float32)
 
         flags = np.zeros((npix, npix), dtype=np.int32)
-        ry, rx = int(rng.integers(1, npix - 1)), int(rng.integers(1, npix - 1))
-        flags[ry, rx] = 0b0010
+        flags[int(rng.integers(1, npix - 1)), int(rng.integers(1, npix - 1))] = 0b0010
 
         obs = Observation(
             id=f"EP-{epoch + 1:02d}",
             timestamp=t_iso,
             ra=ra,
             dec=dec,
-            detector=band,
-            wavelength=1.25,
-            image=img,
-            fits_source=f"synthetic://{ra}_{dec}_ep{epoch}",
+            detector=band_spec.detector,
+            wavelength=band_spec.wavelength_um,
+            image=sky_flux,
+            fits_source=f"synthetic://{ra}_{dec}_b{band_spec.band_index}_ep{epoch}",
             flags=flags,
-            variance=np.full((npix, npix), 0.15, dtype=np.float32),
-            zodi=zodi.astype(np.float32),
+            variance=np.full((npix, npix), 0.05, dtype=np.float32),
+            zodi=(base_zodi * mod["zodi_gain"]).astype(np.float32),
             wcs_header=wcs_hdr,
-            metadata={"time_mjd": mjd, "survey_index": epoch + 1},
+            metadata={
+                "time_mjd": mjd,
+                "survey_index": epoch + 1,
+                "contrast_gain": mod["contrast_gain"],
+                "band_index": band_spec.band_index,
+            },
         )
         setattr(obs, "time_mjd", mjd)
         observations.append(obs)
@@ -156,16 +295,16 @@ def fetch_cutouts_from_irsa_or_mock(
     ra: float,
     dec: float,
     size_arcsec: float,
-    band: str,
+    band_spec: BandSpec,
     source: str = "auto",
 ) -> list[Observation]:
     """Retrieves cutouts using Elide's pipeline with fast 3.5s timeout and automatic fallback."""
     size_deg = size_arcsec / 3600.0
-    band_norm = band.strip().upper()
+    band_norm = band_spec.detector.strip().upper()
     bandpass = band_norm if band_norm.startswith("SPHEREX-") else f"SPHEREx-{band_norm}"
 
     if source == "demo":
-        return make_synthetic_observations(ra, dec, size_arcsec, band)
+        return make_synthetic_epoch_observations(ra, dec, size_arcsec, band_spec)
 
     # 1. Try querying IRSA with a fast 3.5s timeout so the UI never hangs
     obs_list = []
@@ -185,12 +324,10 @@ def fetch_cutouts_from_irsa_or_mock(
             executor.shutdown(wait=False, cancel_futures=True)
     except Exception:
         obs_list = []
-    except Exception:
-        obs_list = []
 
     # 2. If no observations in that sky region or IRSA is slow/down, generate multi-epoch data centered at (ra, dec)
     if not obs_list:
-        obs_list = make_synthetic_observations(ra, dec, size_arcsec, band)
+        obs_list = make_synthetic_epoch_observations(ra, dec, size_arcsec, band_spec)
 
     return obs_list
 
@@ -200,6 +337,8 @@ def process_region_in_memory(
     dec: float,
     size_arcsec: float = 180.0,
     band: str = "D1",
+    band_index: int | None = None,
+    wavelength_um: float | None = None,
     source: str = "auto",
 ) -> dict[str, Any]:
     """Main in-memory rapid analysis:
@@ -210,13 +349,20 @@ def process_region_in_memory(
     4. Detects moving candidates by SNR peak displacement.
     5. Returns Base64 PNGs for original & residual images, plus candidate metadata.
     """
-    observations = fetch_cutouts_from_irsa_or_mock(ra, dec, size_arcsec, band, source=source)
+    band_spec = resolve_band_spec(
+        band_index=band_index,
+        wavelength_um=wavelength_um,
+        detector=band,
+    )
+    observations = fetch_cutouts_from_irsa_or_mock(ra, dec, size_arcsec, band_spec, source=source)
     if not observations:
         return {
             "ra": ra,
             "dec": dec,
             "size_arcsec": size_arcsec,
-            "band": band,
+            "band": band_spec.detector,
+            "band_index": band_spec.band_index,
+            "wavelength_um": band_spec.wavelength_um,
             "wcs_header": {},
             "epochs": [],
             "candidates": [],
@@ -232,7 +378,9 @@ def process_region_in_memory(
             "ra": ra,
             "dec": dec,
             "size_arcsec": size_arcsec,
-            "band": band,
+            "band": band_spec.detector,
+            "band_index": band_spec.band_index,
+            "wavelength_um": band_spec.wavelength_um,
             "wcs_header": {},
             "epochs": [],
             "candidates": [],
@@ -273,7 +421,9 @@ def process_region_in_memory(
             "ra": ra,
             "dec": dec,
             "size_arcsec": size_arcsec,
-            "band": band,
+            "band": band_spec.detector,
+            "band_index": band_spec.band_index,
+            "wavelength_um": band_spec.wavelength_um,
             "wcs_header": {},
             "epochs": [],
             "candidates": [],
@@ -299,13 +449,18 @@ def process_region_in_memory(
     for idx, obs in enumerate(valid_epochs):
         mjd = getattr(obs, "time_mjd", 0.0)
         ts_str = str(obs.timestamp)
-        wl = getattr(obs, "wavelength", 1.0)
+        wl = getattr(obs, "wavelength", band_spec.wavelength_um)
+        contrast_gain = (
+            obs.metadata.get("contrast_gain", 1.0)
+            if hasattr(obs, "metadata") and isinstance(obs.metadata, dict)
+            else 1.0
+        )
         epochs_out.append({
             "obs_id": str(obs.id),
             "mjd": float(mjd) if mjd is not None else 0.0,
             "timestamp": ts_str,
-            "wavelength_um": float(wl) if wl is not None else 1.0,
-            "original_png": array_to_base64_png(cube[idx], is_diff=False),
+            "wavelength_um": float(wl) if wl is not None else band_spec.wavelength_um,
+            "original_png": array_to_base64_png(cube[idx], is_diff=False, contrast_gain=contrast_gain),
             "residual_png": array_to_base64_png(residual_cube[idx], is_diff=True),
         })
 
@@ -313,7 +468,9 @@ def process_region_in_memory(
         "ra": ra,
         "dec": dec,
         "size_arcsec": size_arcsec,
-        "band": band,
+        "band": band_spec.detector,
+        "band_index": band_spec.band_index,
+        "wavelength_um": band_spec.wavelength_um,
         "width": int(w_out),
         "height": int(h_out),
         "wcs_header": dict(ref_wcs.to_header()) if ref_wcs else {},

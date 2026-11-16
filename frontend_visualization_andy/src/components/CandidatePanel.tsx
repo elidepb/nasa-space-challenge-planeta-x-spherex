@@ -147,17 +147,8 @@ export function CandidateDetails({ candidate, knownMatch, liveCatalogMatch }: De
         if (active && Array.isArray(data) && data.length > 0) {
           setSedFluxes(data)
         } else if (active) {
-          // Generador local instantáneo como fallback
-          const wavelengths = Array.from({ length: 102 }, (_, i) => 0.75 + (i * (5.0 - 0.75)) / 101)
-          const fallback = wavelengths.map((wl) => {
-            let f = 14.0 * Math.pow(wl / 1.5, 1.8) * Math.exp(-wl / 2.2)
-            if (wl >= 3.15 && wl <= 3.45) {
-              const ch4 = Math.exp(-Math.pow(wl - 3.3, 2) / (2 * Math.pow(0.06, 2)))
-              f *= 1.0 - 0.75 * ch4
-            }
-            return { um: Number(wl.toFixed(3)), mjy: Number(Math.max(f, 0.1).toFixed(2)) }
-          })
-          setSedFluxes(fallback)
+          // Sin fallback sintético inventado: si no hay datos reales en la API, queda vacío
+          setSedFluxes([])
         }
       })
       .catch(() => {

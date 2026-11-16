@@ -33,6 +33,33 @@ app.add_middleware(
 app.include_router(spectral_analysis.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 
+@app.get("/api/sky-image", tags=["SPHEREx Rapid Analysis"])
+def sky_image_alias(
+    ra: float,
+    dec: float,
+    band_index: int | None = None,
+    wavelength_um: float | None = None,
+    band: str | None = None,
+):
+    return spectral_analysis.get_sky_image(
+        ra=ra,
+        dec=dec,
+        band_index=band_index,
+        wavelength_um=wavelength_um,
+        band=band,
+    )
+
+
+@app.get("/", tags=["root"])
+async def root():
+    return {
+        "status": "online",
+        "service": "SPHEREx Planet X - Rapid Engine API",
+        "version": "2.0.0",
+        "docs_url": "/docs",
+        "health_url": "/health"
+    }
+
 
 
 @app.get("/health", tags=["health"])

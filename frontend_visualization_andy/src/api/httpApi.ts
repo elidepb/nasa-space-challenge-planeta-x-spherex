@@ -59,7 +59,11 @@ export function createHttpApi(baseUrl: string): SpherexApi {
       const sessionId = `analysis-${Date.now()}`
       const band = (query.bandpass ?? 'D1').replace(/^SPHEREx-/i, '')
       const sizeArcsec = Math.round((query.size ?? 0.05) * 3600)
-      const url = `${root}/api/v1/analyze?ra=${query.ra}&dec=${query.dec}&size=${sizeArcsec}&band=${encodeURIComponent(band)}`
+      const bandIndex = query.bands?.[0]
+      const bandParam = bandIndex ? `&band_index=${bandIndex}` : ''
+      const wl = bandIndex ? Number((0.75 + ((Math.max(1, Math.min(102, bandIndex)) - 1) / 101) * (5.0 - 0.75)).toFixed(4)) : null
+      const wlParam = wl ? `&wavelength_um=${wl}` : ''
+      const url = `${root}/api/v1/analyze?ra=${query.ra}&dec=${query.dec}&size=${sizeArcsec}&band=${encodeURIComponent(band)}${bandParam}${wlParam}`
 
       let res: Response
       try {

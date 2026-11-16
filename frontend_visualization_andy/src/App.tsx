@@ -36,7 +36,6 @@ import {
   DEFAULT_BAND_INDEX,
   normalizeBands,
   primaryFromBands,
-  SPECTRAL_FEATURES,
   type SpectralFeatureId,
 } from './lib/spectral'
 import {
@@ -115,19 +114,22 @@ export default function App() {
   const [showTrajectories, setShowTrajectories] = useState(false)
   const [showKnown, setShowKnown] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
-  const [activeFeatures, setActiveFeatures] = useState<SpectralFeatureId[]>([])
+  const [activeFeatures] = useState<SpectralFeatureId[]>([])
   const [imageSettings, setImageSettings] = useState<ImageSettings>(DEFAULT_IMAGE_SETTINGS)
   const [modal, setModal] = useState<ModalName>(initialUrl.query || introAlreadySeen() ? null : 'intro')
   const [toast, setToast] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [wiseState, setWiseState] = useWiseViewUrlState()
   const [diffMode, setDiffMode] = useState<boolean>(() => wiseState.diff)
-  const [pmra, setPmra] = useState<number>(() => wiseState.pmra)
-  const [pmdec, setPmdec] = useState<number>(() => wiseState.pmdec)
+  const pmra = wiseState.pmra
+  const pmdec = wiseState.pmdec
   const [liveMatches, setLiveMatches] = useState<Map<string, KnownCatalogObject>>(new Map())
   const [bands, setBands] = useState<number[]>([initialUrl.query?.bands?.[0] ?? DEFAULT_BAND_INDEX])
+  const [bandPreviewUrl, setBandPreviewUrl] = useState<string | null>(null)
+  const prevBlobUrlRef = useRef<string | null>(null)
+  const bandDebounceTimer = useRef<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [openDropdown, setOpenDropdown] = useState<'mode' | 'layers' | 'track' | 'ir' | 'tools' | null>(null)
+  const [openDropdown, setOpenDropdown] = useState<'mode' | 'layers' | 'tools' | null>(null)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -147,18 +149,82 @@ export default function App() {
     (newBands: number[]) => {
       setBands(newBands)
       if (lastQuery) {
-        const primary = primaryFromBands(newBands)
-        const updated: RegionQuery = {
-          ...lastQuery,
-          bands: newBands,
-          bandpass: primary.bandpass,
-          group: primary.group,
+        if (bandDebounceTimer.current) {
+          window.clearTimeout(bandDebounceTimer.current)
         }
-        runSearch(updated)
+        bandDebounceTimer.current = window.setTimeout(() => {
+          const primary = primaryFromBands(newBands)
+          const updated: RegionQuery = {
+            ...lastQuery,
+            bands: newBands,
+            bandpass: primary.bandpass,
+            group: primary.group,
+          }
+          runSearch(updated)
+        }, 300)
       }
     },
     [lastQuery, runSearch],
   )
+
+  const activeBandIndex = bands[0] ?? DEFAULT_BAND_INDEX
+  const targetRa = lastQuery?.ra ?? CHALLENGE_TARGETS[CHALLENGE_TARGETS.length - 1].query.ra
+  const targetDec = lastQuery?.dec ?? CHALLENGE_TARGETS[CHALLENGE_TARGETS.length - 1].query.dec
+
+  useEffect(() => {
+    if (!entered) return
+    const controller = new AbortController()
+
+    const clamped = Math.max(1, Math.min(102, activeBandIndex))
+    const t = (clamped - 1) / 101
+    const wl = Number((0.75 + t * (5.0 - 0.75)).toFixed(4))
+    const detNum = Math.min(6, Math.max(1, Math.floor((clamped - 1) / 17) + 1))
+    const detector = `D${detNum}`
+
+    async function loadSkyPreview() {
+      const apiRoot = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+      const params = new URLSearchParams({
+        ra: String(targetRa),
+        dec: String(targetDec),
+        band_index: String(clamped),
+        wavelength_um: String(wl),
+        band: detector,
+      })
+
+      try {
+        const res = await fetch(`${apiRoot}/api/sky-image?${params.toString()}`, {
+          signal: controller.signal,
+        })
+        if (!res.ok) return
+        const blob = await res.blob()
+        const nextUrl = URL.createObjectURL(blob)
+
+        if (prevBlobUrlRef.current) {
+          URL.revokeObjectURL(prevBlobUrlRef.current)
+        }
+        prevBlobUrlRef.current = nextUrl
+        setBandPreviewUrl(nextUrl)
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.error('Error cargando preview del cielo:', err)
+        }
+      }
+    }
+
+    loadSkyPreview()
+    return () => controller.abort()
+  }, [entered, targetRa, targetDec, activeBandIndex])
+
+  useEffect(() => {
+    return () => {
+      if (prevBlobUrlRef.current) {
+        URL.revokeObjectURL(prevBlobUrlRef.current)
+      }
+      if (bandDebounceTimer.current) {
+        window.clearTimeout(bandDebounceTimer.current)
+      }
+    }
+  }, [])
 
   // Carga automática inicial: se activa solo una vez que el usuario ha ingresado a la app
   const hasAutoSearched = useRef(false)
@@ -203,10 +269,14 @@ export default function App() {
     if (pending) {
       setMode(pending.mode === 'swipe' ? 'swipe' : 'original')
       setActiveIndex(Math.min(n - 1, Math.max(0, pending.epoch ?? (n > 1 ? n - 1 : 0))))
-      setSelectedCandidateId(candidates.some((c) => c.id === pending.candidate) ? pending.candidate! : null)
+      setSelectedCandidateId(
+        candidates.some((c) => c.id === pending.candidate)
+          ? pending.candidate!
+          : (candidates[0]?.id ?? null)
+      )
     } else {
       setActiveIndex(n > 1 ? n - 1 : 0)
-      setSelectedCandidateId(null)
+      setSelectedCandidateId(candidates[0]?.id ?? null)
     }
   }, [result])
 
@@ -314,7 +384,8 @@ export default function App() {
     }
   }, [images, observations, swipeOn, activeIndex, referenceIndex, epochUrl, t])
 
-  const baseUrl = useProcessedImage(view?.url ?? null, imageSettings, view?.colorApplicable ?? false)
+  const rawUrl = bandPreviewUrl ?? view?.url ?? null
+  const baseUrl = useProcessedImage(rawUrl, imageSettings, view?.colorApplicable ?? false)
   const compareUrl = useProcessedImage(view?.compareUrl ?? null, imageSettings, true)
   const imageFilter = view && !view.colorApplicable && !isDefaultSettings(imageSettings) ? cssFilterFor(imageSettings) : undefined
 
@@ -562,78 +633,6 @@ export default function App() {
               </div>
             </HeaderDropdownTab>
 
-            {/* 3. Track & Stack (PM RA / PM Dec) */}
-            <HeaderDropdownTab
-              label="Track & Stack"
-              isOpen={openDropdown === 'track'}
-              onToggle={() => setOpenDropdown((cur) => (cur === 'track' ? null : 'track'))}
-            >
-              <div className="dropdown-panel-content">
-                <div className="track-stack-box">
-                  <span className="track-label">Movimiento Propio (mas/año):</span>
-                  <div className="track-inputs-row">
-                    <label className="track-field">
-                      <span>PM RA:</span>
-                      <input
-                        type="number"
-                        placeholder="mas/año"
-                        value={pmra || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0
-                          setPmra(val)
-                          setWiseState({ pmra: val })
-                        }}
-                      />
-                    </label>
-                    <label className="track-field">
-                      <span>PM Dec:</span>
-                      <input
-                        type="number"
-                        placeholder="mas/año"
-                        value={pmdec || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0
-                          setPmdec(val)
-                          setWiseState({ pmdec: val })
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </HeaderDropdownTab>
-
-            {/* 4. Capas IR (Hydrogen, Gases / ices, Dust) */}
-            <HeaderDropdownTab
-              label="IR Layers"
-              isOpen={openDropdown === 'ir'}
-              onToggle={() => setOpenDropdown((cur) => (cur === 'ir' ? null : 'ir'))}
-            >
-              <div className="dropdown-panel-content">
-                <div className="toggles-column feature-toggles-col">
-                  {SPECTRAL_FEATURES.map((f) => {
-                    const on = activeFeatures.includes(f.id)
-                    const available = images?.featureLayers?.some((l) => l.id === f.id)
-                    return (
-                      <label key={f.id} className={`feature-toggle feature-${f.id} ${!available ? 'unavailable' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          disabled={!available}
-                          onChange={(e) => {
-                            const on = e.target.checked
-                            setActiveFeatures((cur) => (on ? [...cur, f.id] : cur.filter((id) => id !== f.id)))
-                            if (on) showToast(t(`search.features.${f.id}On`))
-                          }}
-                        />
-                        {t(`search.features.${f.id}`)}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            </HeaderDropdownTab>
-
             {/* Herramientas directas fijadas en la esquina derecha (sin menú desplegable) */}
             <div className="tools-direct-group">
               <ImageControls settings={imageSettings} onChange={setImageSettings} colorApplicable={view?.colorApplicable ?? true} />
@@ -653,7 +652,7 @@ export default function App() {
           <div className="viewer-central-row">
             {/* Lado izquierdo: SPHEREx Bands 102 en formato vertical */}
             <div className="band-picker-vertical-wrap">
-              <SpectralBandPicker selected={bands} disabled={busy} onChange={handleBandChange} />
+              <SpectralBandPicker selected={bands} onChange={handleBandChange} />
             </div>
 
             {/* Centro: Visor de cielo */}

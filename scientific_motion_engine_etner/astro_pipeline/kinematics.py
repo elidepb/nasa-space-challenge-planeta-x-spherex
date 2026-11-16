@@ -100,8 +100,22 @@ def fit_parallax_and_proper_motion(detections: list[dict]) -> dict:
     params, residuals, _, _ = np.linalg.lstsq(A, b, rcond=None)
     _, _, pm_ra, pm_dec, parallax_arcsec = params
 
+    # Cálculo de residuos RMS en arcsec
+    pred_b = A @ params
+    residual_arcsec = float(np.sqrt(np.mean((b - pred_b) ** 2)))
+    max_allowed_residual = 0.8  # arcsec tolerancia típica según resolución SPHEREx/WISE
+
     total_pm = float(np.hypot(pm_ra, pm_dec))
     dist_au = float(1.0 / parallax_arcsec) if parallax_arcsec > 0.05 else None
+
+    # Determinación de régimen cinemático
+    # Planeta X esperado: d in [300, 1000] AU -> parallax in [0.001, 0.0033]'', pm total < 3.5''/yr
+    if total_pm < 0.2 and parallax_arcsec < 0.05:
+        regime = "STATIC"
+    elif total_pm > 10.0 or (dist_au is not None and dist_au < 50.0):
+        regime = "FAST"
+    else:
+        regime = "SLOW_COHERENT"
 
     return {
         "pmRaMasYr": round(float(pm_ra * 1000.0), 2),
@@ -109,5 +123,51 @@ def fit_parallax_and_proper_motion(detections: list[dict]) -> dict:
         "totalMotionArcsecYr": round(total_pm, 3),
         "parallaxArcsec": round(float(max(0.0, parallax_arcsec)), 3),
         "estimatedDistanceAu": round(dist_au, 1) if dist_au else None,
+        "residual_arcsec": round(residual_arcsec, 4),
+        "max_allowed_residual": max_allowed_residual,
+        "regime": regime,
     }
+
+
+def evaluate_tracklet(tracklet_detections: list[dict]) -> dict:
+    tracklet_id = tracklet_detections[0].get("tracklet_id", "unknown")
+    if len(tracklet_detections) < 3:
+        return {
+            "tracklet_id": tracklet_id,
+            "status": "INSUFFICIENT_EPOCHS",
+            "score": 0.0,
+            "residual_arcsec": None,
+        }
+
+    fit = fit_parallax_and_proper_motion(tracklet_detections)
+
+    if fit["regime"] == "STATIC" or fit["residual_arcsec"] > fit["max_allowed_residual"]:
+        return {
+            "tracklet_id": tracklet_id,
+            "status": "STATIC_OR_NOISY_FIT",
+            "score": 0.0,
+            "residual_arcsec": fit["residual_arcsec"],
+        }
+
+    if fit["regime"] == "FAST":
+        return {
+            "tracklet_id": tracklet_id,
+            "status": "FAST_SOLAR_SYSTEM",
+            "score": 0.15,
+            "residual_arcsec": fit["residual_arcsec"],
+        }
+
+    kinematic_term = max(0.0, 1.0 - fit["residual_arcsec"] / fit["max_allowed_residual"])
+    mean_snr = sum(d.get("snr_local", d.get("snr", 5.0)) for d in tracklet_detections) / len(tracklet_detections)
+    snr_term = min(1.0, max(0.0, (mean_snr - 4.5) / 10.0))
+
+    score = round(0.65 * kinematic_term + 0.35 * snr_term, 4)
+
+    return {
+        "tracklet_id": tracklet_id,
+        "status": "KINEMATIC_CANDIDATE",
+        "score": score,
+        "residual_arcsec": fit["residual_arcsec"],
+    }
+
 
