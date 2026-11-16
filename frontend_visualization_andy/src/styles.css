@@ -1601,6 +1601,37 @@ button.mode-toggle:hover {
   border-radius: 5px;
   background: rgba(7, 10, 18, 0.8);
   border: 1px solid var(--border);
+  transition: all 0.2s ease;
+}
+
+.viewer-badge.is-busy {
+  border-color: #3b82f6;
+  background: rgba(15, 23, 42, 0.92);
+  color: #93c5fd;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+}
+
+.badge-loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.badge-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid rgba(147, 197, 253, 0.3);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: badge-spin 0.75s linear infinite;
+}
+
+@keyframes badge-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .viewer-zoom {

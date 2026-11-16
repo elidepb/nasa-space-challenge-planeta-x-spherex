@@ -75,7 +75,7 @@ export function useAnalysis() {
   const start = useCallback(async (query: RegionQuery) => {
     const run = ++runRef.current
     const alive = () => run === runRef.current
-    setState({ ...INITIAL, phase: 'submitting' })
+    setState((s) => ({ ...s, phase: 'submitting' }))
 
     try {
       let info = await api.createAnalysis(query)

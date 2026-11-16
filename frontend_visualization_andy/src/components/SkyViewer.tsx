@@ -36,6 +36,7 @@ interface Props {
   /** Crossfade al cambiar de época (desactivado en blink/swipe). */
   crossfade?: boolean
   badge?: ReactNode
+  isBusy?: boolean
   placeholder?: ReactNode
   pmShift?: { x: number; y: number }
 }
@@ -244,7 +245,7 @@ export function SkyViewer(props: Props) {
     setTimeout(() => setCopied(false), 1200)
   }
 
-  if (!imageUrl) {
+  if (!imageUrl || props.isBusy) {
     return (
       <div className="viewer">
         <div className="viewer-stage empty">{props.placeholder}</div>
@@ -428,7 +429,7 @@ export function SkyViewer(props: Props) {
           </>
         )}
 
-        {props.badge && <div className="viewer-badge">{props.badge}</div>}
+        {props.badge && <div className={`viewer-badge ${props.isBusy ? 'is-busy' : ''}`}>{props.badge}</div>}
 
         <div className="viewer-zoom" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
           <button className="icon-btn" onClick={() => zoomBy(1.5)} title={t('viewer.zoomIn')}>

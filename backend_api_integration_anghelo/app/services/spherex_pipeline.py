@@ -235,11 +235,11 @@ def make_synthetic_epoch_observations(
     n_movers = int(field_rng.choice([1, 2, 3], p=[0.5, 0.35, 0.15]))
     movers = []
     for _ in range(n_movers):
-        m_sy = float(field_rng.uniform(npix * 0.2, npix * 0.8))
-        m_sx = float(field_rng.uniform(npix * 0.2, npix * 0.8))
+        m_sy = float(field_rng.uniform(npix * 0.25, npix * 0.75))
+        m_sx = float(field_rng.uniform(npix * 0.25, npix * 0.75))
         m_vy = float(field_rng.uniform(-1.5, 1.5))
         m_vx = float(field_rng.uniform(-1.5, 1.5))
-        m_flux = float(field_rng.uniform(0.8, 1.8))
+        m_flux = float(field_rng.uniform(2.5, 4.8))
         movers.append({"sy": m_sy, "sx": m_sx, "vy": m_vy, "vx": m_vx, "flux": m_flux})
 
     observations = []
@@ -259,7 +259,7 @@ def make_synthetic_epoch_observations(
             cy = m["sy"] + epoch * m["vy"]
             cx = m["sx"] + epoch * m["vx"]
             if 2 <= cy < npix - 2 and 2 <= cx < npix - 2:
-                m_gain = mod["cool_star_gain"] * mod["ch4_absorption"]
+                m_gain = max(0.55, mod["cool_star_gain"] * mod["ch4_absorption"])
                 sky_flux += (m["flux"] * m_gain * np.exp(-(((y - cy) ** 2 + (x - cx) ** 2) / (2.0 * 1.3**2)))).astype(np.float32)
 
         flags = np.zeros((npix, npix), dtype=np.int32)

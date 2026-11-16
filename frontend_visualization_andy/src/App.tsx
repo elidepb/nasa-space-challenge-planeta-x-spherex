@@ -149,19 +149,14 @@ export default function App() {
     (newBands: number[]) => {
       setBands(newBands)
       if (lastQuery) {
-        if (bandDebounceTimer.current) {
-          window.clearTimeout(bandDebounceTimer.current)
+        const primary = primaryFromBands(newBands)
+        const updated: RegionQuery = {
+          ...lastQuery,
+          bands: newBands,
+          bandpass: primary.bandpass,
+          group: primary.group,
         }
-        bandDebounceTimer.current = window.setTimeout(() => {
-          const primary = primaryFromBands(newBands)
-          const updated: RegionQuery = {
-            ...lastQuery,
-            bands: newBands,
-            bandpass: primary.bandpass,
-            group: primary.group,
-          }
-          runSearch(updated)
-        }, 300)
+        runSearch(updated)
       }
     },
     [lastQuery, runSearch],
@@ -261,6 +256,7 @@ export default function App() {
   // Nuevo resultado: restablecer vista (o aplicar la de una URL compartida).
   useEffect(() => {
     if (!result) return
+    setBandPreviewUrl(null)
     const n = observations.length
     setReferenceIndex(0)
     setPlaying(false)
@@ -384,7 +380,7 @@ export default function App() {
     }
   }, [images, observations, swipeOn, activeIndex, referenceIndex, epochUrl, t])
 
-  const rawUrl = bandPreviewUrl ?? view?.url ?? null
+  const rawUrl = view?.url ?? bandPreviewUrl ?? null
   const baseUrl = useProcessedImage(rawUrl, imageSettings, view?.colorApplicable ?? false)
   const compareUrl = useProcessedImage(view?.compareUrl ?? null, imageSettings, true)
   const imageFilter = view && !view.colorApplicable && !isDefaultSettings(imageSettings) ? cssFilterFor(imageSettings) : undefined
@@ -679,7 +675,16 @@ export default function App() {
                 activeFeatureIds={activeFeatures}
                 crossfade={mode === 'original'}
                 pmShift={pmShift}
-                badge={view?.badge}
+                badge={
+                  busy ? (
+                    <span className="badge-loading-indicator">
+                      <span className="badge-spinner" /> Consultando SPHEREx #{activeBandIndex}...
+                    </span>
+                  ) : (
+                    view?.badge
+                  )
+                }
+                isBusy={busy}
                 placeholder={
                   <StatusView
                     phase={phase}

@@ -67,7 +67,11 @@ export function createHttpApi(baseUrl: string): SpherexApi {
 
       let res: Response
       try {
-        res = await fetch(url)
+        const [fetchRes] = await Promise.all([
+          fetch(url),
+          new Promise((r) => setTimeout(r, 400)), // Delay perceptible para mostrar pantalla de carga
+        ])
+        res = fetchRes
       } catch {
         throw new ApiError(translate('errors.connection', { url: root }))
       }
