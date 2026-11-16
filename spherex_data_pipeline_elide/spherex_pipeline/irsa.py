@@ -40,16 +40,22 @@ _DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _NUMERIC = re.compile(r"^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$")
 
 _QR_ALIASES = {
+    "1": "dr1",
     "2": "qr2",
     "3": "qr3",
+    "dr1": "dr1",
+    "dr-1": "dr1",
     "qr2": "qr2",
     "qr3": "qr3",
     "qr-2": "qr2",
     "qr-3": "qr3",
+    "dr1_deep": "dr1_deep",
     "qr2_deep": "qr2_deep",
     "qr3_deep": "qr3_deep",
+    "dr1-deep": "dr1_deep",
     "qr2-deep": "qr2_deep",
     "qr3-deep": "qr3_deep",
+    "dr1deep": "dr1_deep",
     "qr2deep": "qr2_deep",
     "qr3deep": "qr3_deep",
 }
@@ -65,6 +71,21 @@ def normalize_qr(qr: str) -> str:
             f"QR no reconocido: {qr!r}. Valores válidos: {tuple(KNOWN_RELEASES)}"
         )
     return key
+
+
+def searchable_release(qr: str) -> str:
+    """QR2 ya no está en TAP/SIA; IRSA pide DR1 (surveys 1–2) y QR3 (3–4)."""
+    qr = normalize_qr(qr)
+    meta = KNOWN_RELEASES[qr]
+    if meta.get("searchable", True):
+        return qr
+    successor = str(meta.get("superseded_by") or DEFAULT_QR)
+    LOGGER.warning(
+        "IRSA ya no indexa %s en TAP/SIA (QR2 dejó de ser buscable). Se consulta %s.",
+        qr,
+        successor,
+    )
+    return successor
 
 
 @dataclass
@@ -244,11 +265,109 @@ ORDER BY p.time_bounds_lower
 """.strip()
 
 
-def _query_tap_pyvo(adql: str) -> Table:
-    import pyvo
+# El proxy de Apache delante de /TAP/sync corta la conexión si el ADQL
+# (CONTAINS sobre el polígono SPHEREx) tarda demasiado, y responde 502 Proxy Error.
+# Un 502 que vuelve enseguida suele ser un fallo breve; uno tardío ya agotó ese proxy.
+_TAP_SYNC_BLIP_S = 15
+_TAP_SYNC_RETRY_WAIT_S = 2
+_TAP_ASYNC_TIMEOUT_S = 600
 
-    service = pyvo.dal.TAPService(IRSA_TAP_URL)
-    return service.search(adql).to_table()
+
+def _exception_http_status(exc: BaseException) -> int | None:
+    if isinstance(exc, urllib.error.HTTPError):
+        return int(exc.code)
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if isinstance(status, int):
+        return status
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and code > 0:
+        return code
+    cause = getattr(exc, "cause", None)
+    if isinstance(cause, BaseException) and cause is not exc:
+        return _exception_http_status(cause)
+    return None
+
+
+def _is_gateway_error(exc: BaseException) -> bool:
+    """502/503/504 del proxy de IRSA, no un error de ADQL."""
+    if _exception_http_status(exc) in _UNAVAILABLE_HTTP:
+        return True
+    text = str(exc)
+    return any(
+        marker in text
+        for marker in ("Proxy Error", "Bad Gateway", "Gateway Timeout", "Gateway Time-out")
+    )
+
+
+def _is_timeout_error(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    if "Timeout" in type(exc).__name__:
+        return True
+    cause = getattr(exc, "cause", None)
+    if isinstance(cause, BaseException) and cause is not exc and _is_timeout_error(cause):
+        return True
+    return "timed out" in str(exc).lower()
+
+
+def _is_tap_sync_failure(exc: BaseException) -> bool:
+    """El sync no contestó: proxy 502/503/504 o la conexión se quedó colgada."""
+    return _is_gateway_error(exc) or _is_timeout_error(exc)
+
+
+def _pyvo_tap_service():
+    import pyvo
+    import requests
+
+    class _TimeoutSession(requests.Session):
+        def request(self, *args, **kwargs):
+            kwargs.setdefault("timeout", REMOTE_TIMEOUT_S)
+            return super().request(*args, **kwargs)
+
+    return pyvo.dal.TAPService(IRSA_TAP_URL, session=_TimeoutSession())
+
+
+def _pyvo_run_async(service, adql: str) -> Table:
+    import inspect
+
+    kwargs = {}
+    if "timeout" in inspect.signature(service.run_async).parameters:
+        kwargs["timeout"] = _TAP_ASYNC_TIMEOUT_S
+    return service.run_async(adql, **kwargs).to_table()
+
+
+def _query_tap_pyvo(adql: str) -> tuple[Table, str]:
+    """Sync primero. Si el proxy de /TAP/sync responde 502/503/504, el mismo ADQL va en async."""
+    service = _pyvo_tap_service()
+    started = time.monotonic()
+    try:
+        return service.search(adql).to_table(), "pyvo"
+    except Exception as exc:
+        if not _is_tap_sync_failure(exc):
+            raise
+        if time.monotonic() - started < _TAP_SYNC_BLIP_S:
+            LOGGER.warning(
+                "TAP sync IRSA respondió %s; se reintenta una vez (el proxy a veces falla un instante).",
+                exc,
+            )
+            time.sleep(_TAP_SYNC_RETRY_WAIT_S)
+            try:
+                return service.search(adql).to_table(), "pyvo"
+            except Exception as retry_exc:
+                if not _is_tap_sync_failure(retry_exc):
+                    raise
+                exc = retry_exc
+        LOGGER.warning(
+            "TAP sync IRSA sigue en %s. /TAP/sync lo corta el proxy; se envía la misma consulta en asíncrono.",
+            exc,
+        )
+        return _pyvo_run_async(service, adql), "pyvo-async"
+
+
+def _read_votable(raw: bytes) -> Table:
+    """Los FIELD de IRSA traen ID=col_N; sin esto Astropy oculta access_url."""
+    return Table.read(io.BytesIO(raw), format="votable", use_names_over_ids=True)
 
 
 def _query_tap_http(adql: str) -> Table:
@@ -262,8 +381,7 @@ def _query_tap_http(adql: str) -> Table:
     ).encode("utf-8")
     request = urllib.request.Request(IRSA_TAP_SYNC_URL, data=payload, method="POST")
     with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT_S) as response:
-        raw = response.read()
-    return Table.read(io.BytesIO(raw), format="votable")
+        return _read_votable(response.read())
 
 
 def query_tap(
@@ -278,7 +396,7 @@ def query_tap(
     time_end: Any = None,
 ) -> list[IrsaRecord]:
     """Busca épocas SPHEREx de un QR + banda que cubren (ra, dec), opcionalmente en un intervalo."""
-    qr = normalize_qr(qr)
+    qr = searchable_release(qr)
     bandpass = resolve_bandpass(bandpass, detector)
     time_min_mjd, time_max_mjd = normalize_time_range(time_start, time_end)
     adql = _tap_adql(
@@ -291,24 +409,32 @@ def query_tap(
     )
     errors: list[str] = []
     table = None
-    for method, fn in (("pyvo", _query_tap_pyvo), ("http", _query_tap_http)):
-        try:
-            table = fn(adql)
-            LOGGER.info(
-                "Consulta TAP IRSA (%s, %s, %s, time=%s..%s): %s filas",
-                method,
-                qr,
-                bandpass,
-                time_start,
-                time_end,
-                len(table),
-            )
-            break
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{method}: {exc}")
-            LOGGER.warning("TAP IRSA falló (%s): %s", method, exc)
+    method = ""
+    try:
+        table, method = _query_tap_pyvo(adql)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"pyvo: {exc}")
+        LOGGER.warning("TAP IRSA falló (pyvo): %s", exc)
+        # Otro POST a /TAP/sync repite el mismo corte del proxy. Solo sirve si pyvo
+        # falló por otra causa (no está instalado, error de protocolo, etc.).
+        if not _is_tap_sync_failure(exc):
+            try:
+                table = _query_tap_http(adql)
+                method = "http"
+            except Exception as http_exc:  # noqa: BLE001
+                errors.append(f"http: {http_exc}")
+                LOGGER.warning("TAP IRSA falló (http): %s", http_exc)
     if table is None:
         raise RuntimeError("No se pudo consultar TAP de IRSA. " + " | ".join(errors))
+    LOGGER.info(
+        "Consulta TAP IRSA (%s, %s, %s, time=%s..%s): %s filas",
+        method,
+        qr,
+        bandpass,
+        time_start,
+        time_end,
+        len(table),
+    )
 
     records: list[IrsaRecord] = []
     for row in table:
@@ -338,27 +464,40 @@ def query_sia(
     time_end: Any = None,
 ) -> list[IrsaRecord]:
     """Respaldo: Simple Image Access v2 de IRSA, acotado al QR pedido."""
-    qr = normalize_qr(qr)
+    qr = searchable_release(qr)
     bandpass = resolve_bandpass(bandpass, detector)
     time_min_mjd, time_max_mjd = normalize_time_range(time_start, time_end)
-    collection = KNOWN_RELEASES[qr]["sia_collection"]
     radius = max(size_deg / 2.0, 1.0 / 3600.0)
-    params: dict[str, str] = {
-        "COLLECTION": collection,
-        "POS": f"circle {ra} {dec} {radius}",
-        "RESPONSEFORMAT": "votable",
-    }
-    if time_min_mjd is not None or time_max_mjd is not None:
-        lo = "-Inf" if time_min_mjd is None else f"{time_min_mjd:.8f}"
-        hi = "+Inf" if time_max_mjd is None else f"{time_max_mjd:.8f}"
-        params["TIME"] = f"{lo} {hi}"
-    encoded = urllib.parse.urlencode(params)
-    url = f"{IRSA_SIA_URL}?{encoded}"
-    try:
-        with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_S) as response:
-            table = Table.read(io.BytesIO(response.read()), format="votable")
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"No se pudo consultar SIA de IRSA ({collection}): {exc}") from exc
+    preferred = KNOWN_RELEASES[qr]["sia_collection"]
+    collections = [preferred]
+    for extra in ("spherex_dr1", "spherex_qr3"):
+        if extra not in collections:
+            collections.append(extra)
+
+    table = None
+    collection = preferred
+    errors: list[str] = []
+    for collection in collections:
+        params: dict[str, str] = {
+            "COLLECTION": collection,
+            "POS": f"circle {ra} {dec} {radius}",
+            "RESPONSEFORMAT": "votable",
+        }
+        if time_min_mjd is not None or time_max_mjd is not None:
+            lo = "-Inf" if time_min_mjd is None else f"{time_min_mjd:.8f}"
+            hi = "+Inf" if time_max_mjd is None else f"{time_max_mjd:.8f}"
+            params["TIME"] = f"{lo} {hi}"
+        url = f"{IRSA_SIA_URL}?{urllib.parse.urlencode(params)}"
+        try:
+            with urllib.request.urlopen(url, timeout=REMOTE_TIMEOUT_S) as response:
+                table = _read_votable(response.read())
+            break
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{collection}: {exc}")
+            LOGGER.warning("SIA IRSA falló (%s): %s", collection, exc)
+            table = None
+    if table is None:
+        raise RuntimeError("No se pudo consultar SIA de IRSA. " + " | ".join(errors))
 
     records: list[IrsaRecord] = []
     for row in table:
@@ -382,7 +521,8 @@ def query_sia(
     records.sort(key=lambda item: item.time_mjd if item.time_mjd is not None else 0.0)
     records = filter_records_by_time(records, time_min_mjd, time_max_mjd)
     LOGGER.info(
-        "Consulta SIA IRSA (%s, %s, time=%s..%s): %s filas",
+        "Consulta SIA IRSA (%s, %s, %s, time=%s..%s): %s filas",
+        collection,
         qr,
         bandpass,
         time_start,
@@ -403,11 +543,11 @@ def query_observations(
     time_start: Any = None,
     time_end: Any = None,
 ) -> list[IrsaRecord]:
-    """TAP primero; si falla o no hay filas, SIA del mismo QR."""
-    qr = normalize_qr(qr)
+    """SIA primero (DR1/QR3). TAP a menudo 502 tras el retiro de QR2 del índice."""
+    qr = searchable_release(qr)
     bandpass = resolve_bandpass(bandpass, detector)
     try:
-        records = query_tap(
+        records = query_sia(
             ra,
             dec,
             size_deg,
@@ -418,10 +558,10 @@ def query_observations(
         )
         if records:
             return records
-        LOGGER.warning("TAP no devolvió imágenes para %s %s; se intenta SIA.", qr, bandpass)
+        LOGGER.warning("SIA no devolvió imágenes para %s %s; se intenta TAP.", qr, bandpass)
     except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("TAP no disponible (%s); se intenta SIA.", exc)
-    return query_sia(
+        LOGGER.warning("SIA no disponible (%s); se intenta TAP.", exc)
+    return query_tap(
         ra,
         dec,
         size_deg,

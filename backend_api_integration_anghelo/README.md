@@ -64,9 +64,10 @@ El health check vive en la raíz: `GET /health`.
 4. `GET /spectral-analyses/{session_id}/images` — lista URLs de preview PNG y descarga FITS por observación.
 5. `GET /spectral-analyses/{session_id}/images/{obs_id}/preview.png` — sirve la imagen PNG.
 6. `GET /spectral-analyses/{session_id}/images/{obs_id}/file.fits` — descarga el FITS original.
-7. `POST /spectral-analyses/{session_id}/rgb-composite` — genera composición falso color RGB (**en proceso**).
-8. `GET /spectral-analyses/{session_id}/candidates` — candidatos de movimiento detectados por Etner, organizados por pares de surveys consecutivos (solo cuando `estado == COMPLETADO`).
-9. `GET /health` — health check del servicio.
+7. `POST /spectral-analyses/rgb-composite` — genera composición falso color RGB por survey (una imagen por survey común a los 3 canales). No usa `session_id`.
+8. `GET /spectral-analyses/rgb-composites/{composite_id}.png` — descarga el PNG de una composición RGB generada.
+9. `GET /spectral-analyses/{session_id}/candidates` — candidatos de movimiento detectados por Etner, organizados por pares de surveys consecutivos (solo cuando `estado == COMPLETADO`).
+10. `GET /health` — health check del servicio.
 
 ---
 
@@ -240,32 +241,85 @@ curl -O http://localhost:8000/api/v1/spectral-analyses/{session_id}/images/obs_0
 
 ---
 
-### 7. Composición falso color RGB (en proceso)
+### 7. Composición falso color RGB por survey
 
-**`POST /spectral-analyses/{session_id}/rgb-composite`** _(en proceso)_
+**`POST /spectral-analyses/rgb-composite`**
 
-Parámetros de ruta: `session_id` (`UUID`).
+Genera una composición RGB falsa **por survey (época)**: una imagen por survey común a los tres canales. Para cada canal consulta Elide con el detector `SPHEREx-D{sensor}` y el grupo espectral pedido (las 3 llamadas a Elide se hacen en paralelo), agrupa las observaciones en surveys (gaps temporales > 45 días), homogeniza las formas y arma un PNG RGB por survey común. Cada PNG se persiste en el volumen de imágenes.
+
+No usa `session_id`.
 
 Cuerpo (`application/json`):
 
-| Campo          | Tipo  | Requerido | Descripción                        |
-| -------------- | ----- | --------- | ---------------------------------- |
-| `red_obs_id`   | `str` | ✅        | ID de observación para canal rojo  |
-| `green_obs_id` | `str` | ✅        | ID de observación para canal verde |
-| `blue_obs_id`  | `str` | ✅        | ID de observación para canal azul  |
+| Campo       | Tipo     | Requerido | Descripción                                            | Ejemplo       |
+| ----------- | -------- | --------- | ------------------------------------------------------ | ------------- |
+| `ra`        | `float`  | ✅        | Ascensión recta en grados (0–360)                      | `210.80227`   |
+| `dec`       | `float`  | ✅        | Declinación en grados (-90–90)                         | `54.34895`    |
+| `size_deg`  | `float`  | ❌        | Tamaño del lado del recorte en grados (>0, default 0.85) | `0.85`        |
+| `channels`  | `array`  | ✅        | Definición de canales RGB (1 a 3)                      | ver abajo     |
 
-Ejemplo:
+Cada ítem de `channels`:
+
+| Campo      | Tipo     | Requerido | Descripción                          | Ejemplo |
+| ---------- | -------- | --------- | ------------------------------------ | ------- |
+| `channel`  | `str`    | ✅        | Color: `"red"`, `"green"` o `"blue"` | `"red"` |
+| `sensor`   | `int`    | ✅        | Número de detector SPHEREx (1–6)     | `2`     |
+| `group`    | `int`    | ✅        | Grupo espectral (1–17)               | `5`     |
+
+Respuesta `200 OK`:
+
+```json
+{
+  "total_surveys": 3,
+  "composites": [
+    {
+      "survey_index": 1,
+      "epoch": "2025-05-24T21:56:50",
+      "composite_id": "rgb_s1_d2g5_d4g5_d6g5",
+      "image_url": "/api/v1/spectral-analyses/rgb-composites/rgb_s1_d2g5_d4g5_d6g5.png",
+      "channels_used": {
+        "red_obs_id": "2025W21_2C_0401_3",
+        "green_obs_id": "2025W21_2C_0401_4",
+        "blue_obs_id": "2025W22_1B_0129_1"
+      }
+    }
+  ]
+}
+```
+
+Códigos: `200`, `400` (canal faltante o sin observaciones para un canal).
+
+Ejemplo con cURL:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/spectral-analyses/{session_id}/rgb-composite \
+curl -X POST http://localhost:8000/api/v1/spectral-analyses/rgb-composite \
   -H "Content-Type: application/json" \
-  -d '{"red_obs_id":"obs_001","green_obs_id":"obs_002","blue_obs_id":"obs_003"}' \
-  -o rgb_composite.png
+  -d '{"ra": 210.80227, "dec": 54.34895, "size_deg": 0.85, "channels": [{"channel": "red", "sensor": 2, "group": 5}, {"channel": "green", "sensor": 4, "group": 5}, {"channel": "blue", "sensor": 6, "group": 5}]}'
 ```
 
 ---
 
-### 8. Candidatos de movimiento (Etner)
+### 8. Descarga de composición RGB (PNG)
+
+**`GET /spectral-analyses/rgb-composites/{composite_id}.png`**
+
+Devuelve el archivo PNG de una composición RGB generada por `POST /rgb-composite`.
+
+Parámetro de ruta: `composite_id` (`str`, viene en `composites[].composite_id` de la respuesta del POST).
+
+Devuelve la imagen PNG con `Content-Type: image/png` y `Cache-Control: public, max-age=86400, immutable`.
+
+Ejemplo:
+
+```bash
+curl -O http://localhost:8000/api/v1/spectral-analyses/rgb-composites/rgb_s1_d2g5_d4g5_d6g5.png
+```
+
+Códigos: `200`, `404` (PNG no encontrado).
+
+---
+
+### 9. Candidatos de movimiento (Etner)
 
 **`GET /spectral-analyses/{session_id}/candidates`**
 
@@ -334,7 +388,7 @@ Códigos: `200`, `400` (estado no completado), `404` (sesión no encontrada).
 
 ---
 
-### 9. Health check
+### 10. Health check
 
 **`GET /health`** (sin prefijo `/api/v1`)
 
@@ -354,6 +408,6 @@ Respuesta:
 - La sesión se procesa en segundo plano (`BackgroundTasks`). Después de `POST /spectral-analyses`, el estado empieza como `"EN_PROCESO"` y pasa a `"COMPLETADO"` cuando termina la Fase 2 (descarga FITS, renderizado de previews, análisis Etner).
 - Los candidatos de movimiento solo están disponibles una vez `estado == COMPLETADO`.
 - Los candidatos se analizan por pares de surveys consecutivos en paralelo: 3 surveys generan pares (1,2) y (2,3); 4 surveys generan (1,2), (2,3) y (3,4).
-- El endpoint `rgb-composite` está en proceso.
+- El endpoint `rgb-composite` genera una imagen RGB por survey y no requiere `session_id`.
 - El almacenamiento puede ser en memoria o Mongo según `STORAGE_TYPE`.
 - Los endpoints de imagen y FITS leen de los volúmenes de datos configurados (`IMAGES_DIR` y `CACHE_DIR`).

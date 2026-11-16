@@ -49,7 +49,7 @@ export function readUrlState(): UrlState {
           ra,
           dec,
           size: Number.isFinite(size) ? size : 0.85,
-          qr: p.get('qr') ?? 'qr2',
+          qr: p.get('qr') ?? 'dr1',
           bandpass: primary.bandpass,
           group: primary.group,
           bands,

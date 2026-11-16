@@ -36,8 +36,10 @@ def test_demo_contract_wcs_and_no_duplicates(tmp_path):
 def test_extract_qr_from_real_url():
     qr2 = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr2/level2/file.fits"
     qr3 = "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/file.fits"
+    dr1 = "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/file.fits"
     assert extract_qr_from_url(qr2) == "qr2"
     assert extract_qr_from_url(qr3) == "qr3"
+    assert extract_qr_from_url(dr1) == "dr1"
 
 
 def test_dedupe_records_counts_duplicates():
