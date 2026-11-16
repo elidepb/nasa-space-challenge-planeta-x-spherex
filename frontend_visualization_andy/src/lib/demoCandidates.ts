@@ -13,7 +13,7 @@ import type {
   RegionQuery,
 } from '../types/contracts'
 
-export const USE_DEMO_CANDIDATES = true
+export const USE_DEMO_CANDIDATES = false
 
 type Peak = { x: number; y: number; v: number }
 type Frame = { observationId: string; timestamp: string; url: string }

@@ -87,6 +87,7 @@ const es: Messages = {
   },
   search: {
     title: 'Región del cielo',
+    whereToLook: 'Dónde buscar',
     ra: 'RA (°)',
     dec: 'Dec (°)',
     size: 'Tamaño (°)',
@@ -115,6 +116,8 @@ const es: Messages = {
     layersHint: 'Actívalas para pintar polvo, gases o hidrógeno encima del cielo (se ven de inmediato).',
     layersNeedAnalysis: 'Primero busca y analiza una región; luego podrás activar las capas.',
     challengeTargets: 'Targets con datos SPHEREx',
+    selectStarOrTarget: 'Seleccionar estrella u objetivo',
+    selectTargetPlaceholder: '— Elige una estrella u objetivo —',
     demoTargets: 'Campos demo',
     features: {
       hydrogen: 'Hidrógeno',

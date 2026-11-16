@@ -33,9 +33,9 @@ _backend_sp = str(BACKEND)
 if _backend_sp not in sys.path:
     sys.path.insert(0, _backend_sp)
 
-# Hermetic stub for reproject: astro_pipeline imports it for WCS alignment, but
-# the tests stub out run_etner_analysis entirely, so reproject is never called.
-if "reproject" not in sys.modules:
+try:
+    import reproject
+except ImportError:
     _reproject_stub = types.ModuleType("reproject")
-    _reproject_stub.reproject_interp = lambda *args, **kwargs: None
+    _reproject_stub.reproject_interp = lambda *args, **kwargs: (None, None)
     sys.modules["reproject"] = _reproject_stub

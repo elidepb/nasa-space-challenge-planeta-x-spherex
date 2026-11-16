@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { fillDemoCandidatesIfEmpty } from '../lib/demoCandidates'
 import { skyToPixel } from '../lib/sky'
 import type {
   AnalysisImages,
@@ -76,7 +75,7 @@ export function useAnalysis() {
   const start = useCallback(async (query: RegionQuery) => {
     const run = ++runRef.current
     const alive = () => run === runRef.current
-    setState({ ...INITIAL, phase: 'submitting' })
+    setState((s) => ({ ...s, phase: 'submitting' }))
 
     try {
       let info = await api.createAnalysis(query)
@@ -110,21 +109,15 @@ export function useAnalysis() {
         api.getKnownObjects(info.id),
       ])
       if (!alive()) return
-      // Escala real del cutout (el wire hardcodeaba 6.2″/px).
+      // Escala angular real del cutout
       const sizeDeg = info.region.size || 0.05
       const w = finiteOr(images.width, 64)
       const imagesScaled: AnalysisImages = {
         ...images,
-        pixelScaleArcsec: w > 0 ? (sizeDeg * 3600) / w : images.pixelScaleArcsec,
+        pixelScaleArcsec: images.pixelScaleArcsec > 0 ? images.pixelScaleArcsec : (sizeDeg * 3600) / w,
       }
-      // TEMP VIDEO: sustituye candidatos del API (coords malas) por marcas en manchas blancas.
-      const withDemo = await fillDemoCandidatesIfEmpty(candidatesRaw, observations, imagesScaled, info.region)
-      if (!alive()) return
-      // Si el demo generó marcas, no re-proyectar por RA/Dec (rompe el ancla al PNG).
-      const candidates =
-        withDemo !== candidatesRaw
-          ? withDemo
-          : ensureCandidateAnchors(withDemo, observations, imagesScaled, info.region)
+      // Detecciones calculadas por el pipeline / backend
+      const candidates = ensureCandidateAnchors(candidatesRaw, observations, imagesScaled, info.region)
       setState({
         phase: 'completed',
         info,

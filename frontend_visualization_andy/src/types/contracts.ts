@@ -98,6 +98,7 @@ export interface AnalysisInfo {
 export interface EpochImage {
   observationId: string
   url: string
+  residualUrl?: string
 }
 
 export interface DifferenceImage {

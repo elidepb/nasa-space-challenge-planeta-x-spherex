@@ -715,3 +715,52 @@ def _optional_float(row, column: str) -> float | None:
     if number != number:  # NaN
         return None
     return number
+
+
+def query_spherex_metadata(ra: float, dec: float, radius_arcsec: float = 180.0):
+    """Consulta imágenes espectrales de SPHEREx QR3/DR1 que cubren (RA, Dec)."""
+    import pyvo as vo
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+
+    sia_service = vo.dal.SIAService(IRSA_SIA_URL)
+    pos = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
+    # Filtramos la colección de SPHEREx en IRSA
+    results = sia_service.search(pos=pos, size=(radius_arcsec * u.arcsec))
+    df = results.to_table().to_pandas()
+    return df[df["collection"].str.contains("spherex", case=False, na=False)]
+
+
+def fetch_cloud_cutout(fits_uri: str, ra: float, dec: float, size_arcsec: float = 120.0):
+    """
+    Lee únicamente los bloques de bytes necesarios desde S3 o HTTP (Lazy Loading)
+    extrayendo todas las extensiones de SPHEREx (IMAGE, VARIANCE, FLAGS, ZODI, PSF).
+    """
+    from astropy.coordinates import SkyCoord
+    from astropy.io import fits
+    from astropy.nddata import Cutout2D
+    from astropy.wcs import WCS
+    import astropy.units as u
+
+    coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
+    size = u.Quantity((size_arcsec, size_arcsec), u.arcsec)
+
+    # use_fsspec=True y lazy_load_hdus=True evitan descargar el FITS completo
+    with fits.open(fits_uri, use_fsspec=True, fsspec_kwargs={"anon": True}) as hdul:
+        wcs_spatial = WCS(hdul["IMAGE"].header, naxis=2)
+
+        cutouts = {}
+        cutout_wcs = None
+        for ext in ["IMAGE", "VARIANCE", "FLAGS", "ZODI"]:
+            if ext in hdul:
+                cutout = Cutout2D(hdul[ext].data, position=coord, size=size, wcs=wcs_spatial)
+                cutouts[ext] = cutout.data
+                if ext == "IMAGE":
+                    cutout_wcs = cutout.wcs
+
+        # Extraer el modelo PSF local de la extensión PSF (actualizado en DR1/QR3)
+        psf_kernel = hdul["PSF"].data if "PSF" in hdul else None
+        header = hdul["IMAGE"].header
+
+    return cutouts, cutout_wcs, psf_kernel, header
+

@@ -89,3 +89,79 @@ export const simbadUrl = (ra: number, dec: number, radiusArcsec = 30) =>
 
 export const sbdbUrl = (name: string) =>
   `https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=${encodeURIComponent(name.replace(/\s*\(.*\)$/, ''))}`
+
+// ============================================================================
+// Consultas Directas desde el Navegador (CORS Habilitado) para Catálogos Vivos
+// ============================================================================
+
+export interface KnownCatalogObject {
+  source: 'GAIA_DR3' | 'SKYBOT_ASTEROID' | 'NEOSSAT_CADC'
+  id: string
+  ra: number
+  dec: number
+  pmra?: number // mas/yr
+  pmdec?: number // mas/yr
+  g_mag?: number
+  velocity_arcsec_hr?: number
+  infoUrl: string
+}
+
+/**
+ * Consulta catálogos vivos (Gaia DR3 y SkyBoT) a través del backend FastAPI
+ * con CORS habilitado, garantizando que el navegador no reciba bloqueos de origen cruzado.
+ */
+export async function fetchCrossmatchCatalogs(
+  ra: number,
+  dec: number,
+  radiusArcsec: number = 180,
+  mjd: number = 60400,
+): Promise<KnownCatalogObject[]> {
+  const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+  try {
+    const res = await fetch(
+      `${apiUrl}/api/v1/crossmatch?ra=${ra}&dec=${dec}&radius=${radiusArcsec}&mjd=${mjd}`,
+    )
+    if (!res.ok) return []
+    return (await res.json()) as KnownCatalogObject[]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 1. Consulta Gaia DR3 en vivo (a través del backend sin restricciones CORS)
+ *    para encontrar estrellas con alto movimiento propio en el recorte actual.
+ */
+export async function fetchGaiaHighPMStars(
+  ra: number,
+  dec: number,
+  radiusArcsec: number = 120,
+): Promise<KnownCatalogObject[]> {
+  const all = await fetchCrossmatchCatalogs(ra, dec, radiusArcsec)
+  return all.filter((o) => o.source === 'GAIA_DR3')
+}
+
+/**
+ * 2. Consulta SkyBoT (IMCCE ssp.imcce.fr) para identificar asteroides en esa fecha y coordenada.
+ */
+export async function fetchKnownAsteroidsSkyBoT(
+  ra: number,
+  dec: number,
+  mjd: number,
+  radiusArcsec: number = 180,
+): Promise<KnownCatalogObject[]> {
+  const all = await fetchCrossmatchCatalogs(ra, dec, radiusArcsec, mjd)
+  return all.filter((o) => o.source === 'SKYBOT_ASTEROID')
+}
+
+/**
+ * 3. Consulta el telescopio espacial NEOSSat.
+ */
+export async function fetchNEOSSatObservations(
+  ra: number,
+  dec: number,
+  radiusArcsec: number = 300,
+): Promise<KnownCatalogObject[]> {
+  const all = await fetchCrossmatchCatalogs(ra, dec, radiusArcsec)
+  return all.filter((o) => o.source === 'NEOSSAT_CADC')
+}
