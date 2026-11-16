@@ -58,7 +58,7 @@ flowchart TD
         Preproc --> Reproject["WCS Astrometric Reprojection<br/>(reproject_interp)"]
         Reproject --> DiffEngine["difference_imaging.py & gaussian.py<br/>SNR = ΔI / √(σ₁² + σ₂²)"]
         DiffEngine --> DetectPeaks["detect_peaks.py & match_dipoles.py"]
-        DetectPeaks --> Kinematics["kinematics.py: Astrometric Derivation (RA, Dec, \"/yr)"]
+        DetectPeaks --> Kinematics["kinematics.py: Astrometric Derivation (RA, Dec, #quot;/yr)"]
         Kinematics --> Candidates["AnalysisResult: Validated Candidate List"]
     end
 
