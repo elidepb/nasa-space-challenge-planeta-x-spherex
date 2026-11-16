@@ -90,16 +90,22 @@ def make_synthetic_observations(
     seed = abs(int(round(ra * 1000 + dec * 100))) % (2**31 - 1)
     rng = np.random.default_rng(seed)
 
-    # 6 to 9 fixed stars with realistic Gaussian profiles
+    # 8 to 16 fixed stars with realistic Gaussian profiles
     fixed_stars = []
-    for _ in range(rng.integers(6, 10)):
-        fixed_stars.append((rng.uniform(5, npix - 5), rng.uniform(5, npix - 5), rng.uniform(4.0, 14.0)))
+    for _ in range(rng.integers(8, 17)):
+        fixed_stars.append((rng.uniform(5, npix - 5), rng.uniform(5, npix - 5), rng.uniform(5.0, 18.0)))
 
-    # A faint moving candidate with proper motion
-    start_y = rng.uniform(npix * 0.35, npix * 0.65)
-    start_x = rng.uniform(npix * 0.35, npix * 0.65)
-    step_y = rng.uniform(-1.2, 1.2)
-    step_x = rng.uniform(-1.2, 1.2)
+    # Realistically populate 0 to 4 moving objects depending on field density
+    n_movers = int(rng.choice([0, 1, 2, 3, 4], p=[0.15, 0.35, 0.25, 0.15, 0.10]))
+    movers = []
+    for _ in range(n_movers):
+        m_sy = rng.uniform(npix * 0.2, npix * 0.8)
+        m_sx = rng.uniform(npix * 0.2, npix * 0.8)
+        # Variable kinematics: slow TNO / Planet X vs fast Kuiper belt object / asteroid
+        m_vy = rng.uniform(-1.8, 1.8)
+        m_vx = rng.uniform(-1.8, 1.8)
+        m_flux = rng.uniform(5.5, 12.0)
+        movers.append({"sy": m_sy, "sx": m_sx, "vy": m_vy, "vx": m_vx, "flux": m_flux})
 
     observations = []
     base_mjd = 60400.0
@@ -115,10 +121,11 @@ def make_synthetic_observations(
         for fy, fx, flux in fixed_stars:
             img += (flux * np.exp(-(((yy - fy) ** 2 + (xx - fx) ** 2) / (2.0 * 1.5**2)))).astype(np.float32)
 
-        cy = start_y + epoch * step_y
-        cx = start_x + epoch * step_x
-        if 2 <= cy < npix - 2 and 2 <= cx < npix - 2:
-            img += (8.0 * np.exp(-(((yy - cy) ** 2 + (xx - cx) ** 2) / (2.0 * 1.3**2)))).astype(np.float32)
+        for m in movers:
+            cy = m["sy"] + epoch * m["vy"]
+            cx = m["sx"] + epoch * m["vx"]
+            if 2 <= cy < npix - 2 and 2 <= cx < npix - 2:
+                img += (m["flux"] * np.exp(-(((yy - cy) ** 2 + (xx - cx) ** 2) / (2.0 * 1.3**2)))).astype(np.float32)
 
         flags = np.zeros((npix, npix), dtype=np.int32)
         ry, rx = int(rng.integers(1, npix - 1)), int(rng.integers(1, npix - 1))
@@ -335,45 +342,58 @@ def detect_moving_candidates(
     snr_first = res_first / noise_first
     snr_last = res_last / noise_last
 
-    labels_1, num_1 = label(snr_first > 4.5)
-    labels_2, num_2 = label(snr_last > 4.5)
+    labels_1, num_1 = label(snr_first > 3.8)
+    labels_2, num_2 = label(snr_last > 3.8)
 
     mjd_start = getattr(epochs_meta[0], "time_mjd", 0.0) or 0.0
     mjd_end = getattr(epochs_meta[-1], "time_mjd", 0.0) or 0.0
     dt_years = max(abs(mjd_end - mjd_start) / 365.25, 0.01)
 
     candidates = []
+    used_j = set()
 
     for i in range(1, num_1 + 1):
         y1, x1 = np.mean(np.argwhere(labels_1 == i), axis=0)
         c1 = wcs.pixel_to_world(x1, y1)
 
+        best_match = None
+        best_dist = 999.0
+
         for j in range(1, num_2 + 1):
+            if j in used_j:
+                continue
             y2, x2 = np.mean(np.argwhere(labels_2 == j), axis=0)
             dist_px = float(np.hypot(x2 - x1, y2 - y1))
-            # Avoid single static pixel noise (< 1.5 px) or huge unphysical jumps (> 60 px)
-            if 1.5 < dist_px < 60.0:
-                c2 = wcs.pixel_to_world(x2, y2)
-                sep_arcsec = float(c1.separation(c2).arcsecond)
-                pm_total = sep_arcsec / dt_years
-                snr_peak = float(max(np.max(snr_first[labels_1 == i]), np.max(snr_last[labels_2 == j])))
+            # Avoid single static pixel noise (< 1.2 px) or huge unphysical jumps (> 70 px)
+            if 1.2 < dist_px < 70.0 and dist_px < best_dist:
+                best_dist = dist_px
+                best_match = (j, y2, x2)
 
-                # Flip y to match PNG orientation (array_to_base64_png uses np.flipud)
-                img_y1 = (h_img - 1) - float(y1)
-                img_y2 = (h_img - 1) - float(y2)
+        if best_match is not None:
+            j_match, y2, x2 = best_match
+            used_j.add(j_match)
+            c2 = wcs.pixel_to_world(x2, y2)
+            sep_arcsec = float(c1.separation(c2).arcsecond)
+            pm_total = sep_arcsec / dt_years
+            snr_peak = float(max(np.max(snr_first[labels_1 == i]), np.max(snr_last[labels_2 == j_match])))
 
-                candidates.append({
-                    "id": f"CAND-{len(candidates)+1:02d}",
-                    "ra_deg": float(c2.ra.deg),
-                    "dec_deg": float(c2.dec.deg),
-                    "x1_px": float(x1),
-                    "y1_px": img_y1,
-                    "x2_px": float(x2),
-                    "y2_px": img_y2,
-                    "snr": round(snr_peak, 2),
-                    "displacement_arcsec": round(float(sep_arcsec), 2),
-                    "velocity_arcsec_yr": round(float(pm_total), 2),
-                })
+            # Flip y to match PNG orientation (array_to_base64_png uses np.flipud)
+            img_y1 = (h_img - 1) - float(y1)
+            img_y2 = (h_img - 1) - float(y2)
+
+            candidates.append({
+                "id": f"CAND-{len(candidates)+1:02d}",
+                "ra_deg": float(c2.ra.deg),
+                "dec_deg": float(c2.dec.deg),
+                "x1_px": float(x1),
+                "y1_px": img_y1,
+                "x2_px": float(x2),
+                "y2_px": img_y2,
+                "snr": round(snr_peak, 2),
+                "displacement_arcsec": round(float(sep_arcsec), 2),
+                "velocity_arcsec_yr": round(float(pm_total), 2),
+            })
+
 
     return sorted(candidates, key=lambda c: c["snr"], reverse=True)[:15]
 
